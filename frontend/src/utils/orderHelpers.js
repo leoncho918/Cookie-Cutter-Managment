@@ -28,30 +28,52 @@ export const PAYMENT_METHODS = {
 
 // Get the next allowed stages for a given current stage and user role
 export const getNextAllowedStages = (currentStage, userRole) => {
-  const transitions = {
-    [ORDER_STAGES.DRAFT]: userRole === "baker" ? [ORDER_STAGES.SUBMITTED] : [],
-    [ORDER_STAGES.SUBMITTED]:
-      userRole === "admin" ? [ORDER_STAGES.UNDER_REVIEW] : [],
-    [ORDER_STAGES.UNDER_REVIEW]:
-      userRole === "admin"
-        ? [ORDER_STAGES.REQUIRES_APPROVAL, ORDER_STAGES.REQUESTED_CHANGES]
-        : [],
-    [ORDER_STAGES.REQUIRES_APPROVAL]:
-      userRole === "baker"
-        ? [ORDER_STAGES.READY_TO_PRINT]
-        : userRole === "admin"
-        ? [ORDER_STAGES.REQUESTED_CHANGES]
-        : [],
-    [ORDER_STAGES.REQUESTED_CHANGES]:
-      userRole === "admin" ? [ORDER_STAGES.UNDER_REVIEW] : [],
-    [ORDER_STAGES.READY_TO_PRINT]:
-      userRole === "admin" ? [ORDER_STAGES.PRINTING] : [],
-    [ORDER_STAGES.PRINTING]:
-      userRole === "admin" ? [ORDER_STAGES.COMPLETED] : [],
-    [ORDER_STAGES.COMPLETED]: [],
-  };
+  if (userRole === "admin") {
+    // Admins can move to most stages with some restrictions
+    const adminTransitions = {
+      [ORDER_STAGES.DRAFT]: [ORDER_STAGES.SUBMITTED, ORDER_STAGES.UNDER_REVIEW],
+      [ORDER_STAGES.SUBMITTED]: [ORDER_STAGES.UNDER_REVIEW, ORDER_STAGES.DRAFT], // Can send back to draft
+      [ORDER_STAGES.UNDER_REVIEW]: [
+        ORDER_STAGES.REQUIRES_APPROVAL,
+        ORDER_STAGES.REQUESTED_CHANGES,
+        ORDER_STAGES.SUBMITTED,
+      ], // Can go back
+      [ORDER_STAGES.REQUIRES_APPROVAL]: [
+        ORDER_STAGES.REQUESTED_CHANGES,
+        ORDER_STAGES.READY_TO_PRINT,
+        ORDER_STAGES.UNDER_REVIEW,
+      ], // Can override baker approval
+      [ORDER_STAGES.REQUESTED_CHANGES]: [
+        ORDER_STAGES.UNDER_REVIEW,
+        ORDER_STAGES.REQUIRES_APPROVAL,
+      ],
+      [ORDER_STAGES.READY_TO_PRINT]: [
+        ORDER_STAGES.PRINTING,
+        ORDER_STAGES.REQUIRES_APPROVAL,
+      ], // Can send back for re-approval
+      [ORDER_STAGES.PRINTING]: [
+        ORDER_STAGES.COMPLETED,
+        ORDER_STAGES.READY_TO_PRINT,
+      ], // Can go back if needed
+      [ORDER_STAGES.COMPLETED]: [ORDER_STAGES.PRINTING], // Can reopen if needed
+    };
+    return adminTransitions[currentStage] || [];
+  } else if (userRole === "baker") {
+    // Bakers have limited transitions
+    const bakerTransitions = {
+      [ORDER_STAGES.DRAFT]: [ORDER_STAGES.SUBMITTED],
+      [ORDER_STAGES.SUBMITTED]: [], // Only admin can move from submitted
+      [ORDER_STAGES.UNDER_REVIEW]: [], // Only admin can move from under review
+      [ORDER_STAGES.REQUIRES_APPROVAL]: [ORDER_STAGES.READY_TO_PRINT], // Baker approves
+      [ORDER_STAGES.REQUESTED_CHANGES]: [], // Wait for admin to make changes
+      [ORDER_STAGES.READY_TO_PRINT]: [], // Only admin can move to printing
+      [ORDER_STAGES.PRINTING]: [], // Only admin can mark as completed
+      [ORDER_STAGES.COMPLETED]: [], // Final stage
+    };
+    return bakerTransitions[currentStage] || [];
+  }
 
-  return transitions[currentStage] || [];
+  return [];
 };
 
 // Get stage color for UI styling

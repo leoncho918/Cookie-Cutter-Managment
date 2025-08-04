@@ -284,9 +284,10 @@ const CreateOrder = () => {
 
                 <div className="mt-4 p-3 bg-blue-50 rounded-md">
                   <p className="text-sm text-blue-700">
-                    <strong>Note:</strong> You can upload inspiration images
-                    after creating the order. Images help us understand your
-                    vision better!
+                    <strong>📸 Important:</strong> You will need to upload at
+                    least one inspiration image for each item before you can
+                    submit the order. Images help us understand your vision
+                    better!
                   </p>
                 </div>
               </div>

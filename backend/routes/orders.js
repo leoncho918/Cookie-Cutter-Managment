@@ -188,49 +188,50 @@ router.put("/:id/stage", requireBakerOrAdmin, async (req, res) => {
     const isAdmin = req.user.role === "admin";
     const isBaker = req.user.role === "baker";
 
-    // Define allowed transitions
-    const allowedTransitions = {
-      Draft: ["Submitted"], // Baker only
-      Submitted: ["Under Review"], // Admin only
-      "Under Review": ["Requires Approval", "Requested Changes"], // Admin only
-      "Requires Approval": ["Ready to Print", "Requested Changes"], // Baker approval or Admin changes
-      "Requested Changes": ["Under Review"], // After admin edits, goes back to review
-      "Ready to Print": ["Printing"], // Admin only
-      Printing: ["Completed"], // Admin only
-      Completed: [], // Final stage
+    // Define allowed transitions for different roles
+    const adminAllowedTransitions = {
+      Draft: ["Submitted", "Under Review"],
+      Submitted: ["Under Review", "Draft"],
+      "Under Review": ["Requires Approval", "Requested Changes", "Submitted"],
+      "Requires Approval": [
+        "Requested Changes",
+        "Ready to Print",
+        "Under Review",
+      ],
+      "Requested Changes": ["Under Review", "Requires Approval"],
+      "Ready to Print": ["Printing", "Requires Approval"],
+      Printing: ["Completed", "Ready to Print"],
+      Completed: ["Printing"],
     };
 
-    if (
-      !allowedTransitions[currentStage] ||
-      !allowedTransitions[currentStage].includes(stage)
-    ) {
-      return res.status(400).json({ message: "Invalid stage transition" });
-    }
+    const bakerAllowedTransitions = {
+      Draft: ["Submitted"],
+      Submitted: [],
+      "Under Review": [],
+      "Requires Approval": ["Ready to Print"],
+      "Requested Changes": [],
+      "Ready to Print": [],
+      Printing: [],
+      Completed: [],
+    };
 
-    // Permission checks for specific transitions
-    if (isBaker && order.bakerId !== req.user.bakerId) {
-      return res.status(403).json({ message: "Access denied to this order" });
-    }
-
-    if (isBaker) {
-      // Bakers can only transition from Draft to Submitted or from Requires Approval to Ready to Print
-      if (
-        !(currentStage === "Draft" && stage === "Submitted") &&
-        !(currentStage === "Requires Approval" && stage === "Ready to Print")
-      ) {
-        return res
-          .status(403)
-          .json({ message: "Bakers cannot perform this stage transition" });
-      }
-    }
-
+    let allowedTransitions = [];
     if (isAdmin) {
-      // Admin cannot transition Draft to Submitted (baker only action)
-      if (currentStage === "Draft" && stage === "Submitted") {
-        return res
-          .status(403)
-          .json({ message: "Only bakers can submit orders" });
+      allowedTransitions = adminAllowedTransitions[currentStage] || [];
+    } else if (isBaker) {
+      // Baker can only modify their own orders
+      if (order.bakerId !== req.user.bakerId) {
+        return res.status(403).json({ message: "Access denied to this order" });
       }
+      allowedTransitions = bakerAllowedTransitions[currentStage] || [];
+    }
+
+    if (!allowedTransitions.includes(stage)) {
+      return res.status(400).json({
+        message: `Cannot transition from ${currentStage} to ${stage}. Allowed transitions: ${allowedTransitions.join(
+          ", "
+        )}`,
+      });
     }
 
     // Special validations
@@ -240,6 +241,21 @@ router.put("/:id/stage", requireBakerOrAdmin, async (req, res) => {
         .json({
           message: "Price is required when setting order to Requires Approval",
         });
+    }
+
+    // Baker-specific validation: Must have inspiration images before submitting
+    if (isBaker && currentStage === "Draft" && stage === "Submitted") {
+      const itemsWithoutImages = order.items.filter(
+        (item) => !item.inspirationImages || item.inspirationImages.length === 0
+      );
+
+      if (itemsWithoutImages.length > 0) {
+        return res.status(400).json({
+          message: `Cannot submit order: ${itemsWithoutImages.length} item(s) are missing inspiration images. Please upload at least one inspiration image for each item before submitting.`,
+          missingImages: itemsWithoutImages.length,
+          totalItems: order.items.length,
+        });
+      }
     }
 
     // Update order

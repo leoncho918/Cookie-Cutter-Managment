@@ -25,6 +25,10 @@ const OrderDetail = () => {
   const { showError, showSuccess } = useToast();
   const navigate = useNavigate();
 
+  // Debug logging
+  console.log("OrderDetail component loaded with ID:", id);
+  console.log("Current user:", user);
+
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
@@ -53,6 +57,7 @@ const OrderDetail = () => {
       setLoading(true);
       console.log("Loading order with ID:", id);
       const response = await axios.get(`/orders/${id}`);
+      console.log("Order loaded:", response.data);
       setOrder(response.data);
     } catch (error) {
       console.error("Error loading order:", error);
@@ -340,31 +345,93 @@ const OrderDetail = () => {
           <div className="mt-6 pt-4 border-t border-gray-200">
             <div className="flex items-center space-x-3">
               <span className="text-sm text-gray-600">Available actions:</span>
-              {nextAllowedStages.map((stage) => (
-                <Button
-                  key={stage}
-                  variant="primary"
-                  size="small"
-                  onClick={() =>
-                    setStageModal({
-                      isOpen: true,
-                      targetStage: stage,
-                      price:
-                        stage === ORDER_STAGES.REQUIRES_APPROVAL
-                          ? order.price || ""
-                          : "",
-                      comments: "",
-                    })
-                  }
-                >
-                  {stage === ORDER_STAGES.SUBMITTED
-                    ? "Submit Order"
-                    : stage === ORDER_STAGES.READY_TO_PRINT
-                    ? "Approve Order"
-                    : `Move to ${stage}`}
-                </Button>
-              ))}
+              {nextAllowedStages.map((stage) => {
+                // Check if baker is trying to submit without inspiration images
+                const isSubmitting =
+                  stage === ORDER_STAGES.SUBMITTED && user.role === "baker";
+                const missingImages = isSubmitting
+                  ? order.items.filter(
+                      (item) =>
+                        !item.inspirationImages ||
+                        item.inspirationImages.length === 0
+                    )
+                  : [];
+                const canSubmit = !isSubmitting || missingImages.length === 0;
+
+                return (
+                  <Button
+                    key={stage}
+                    variant="primary"
+                    size="small"
+                    onClick={() => {
+                      if (!canSubmit) {
+                        showError(
+                          `Please upload at least one inspiration image for all items before submitting. Missing images for ${missingImages.length} item(s).`
+                        );
+                        return;
+                      }
+                      setStageModal({
+                        isOpen: true,
+                        targetStage: stage,
+                        price:
+                          stage === ORDER_STAGES.REQUIRES_APPROVAL
+                            ? order.price || ""
+                            : "",
+                        comments: "",
+                      });
+                    }}
+                    disabled={!canSubmit}
+                    className={
+                      !canSubmit ? "opacity-50 cursor-not-allowed" : ""
+                    }
+                  >
+                    {stage === ORDER_STAGES.SUBMITTED
+                      ? "Submit Order"
+                      : stage === ORDER_STAGES.READY_TO_PRINT
+                      ? "Approve Order"
+                      : `Move to ${stage}`}
+                  </Button>
+                );
+              })}
             </div>
+
+            {/* Show warning if trying to submit without images */}
+            {user.role === "baker" &&
+              order.stage === ORDER_STAGES.DRAFT &&
+              (() => {
+                const itemsWithoutImages = order.items.filter(
+                  (item) =>
+                    !item.inspirationImages ||
+                    item.inspirationImages.length === 0
+                );
+                return (
+                  itemsWithoutImages.length > 0 && (
+                    <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+                      <div className="flex">
+                        <div className="flex-shrink-0">
+                          <span className="text-yellow-400">⚠️</span>
+                        </div>
+                        <div className="ml-3">
+                          <h3 className="text-sm font-medium text-yellow-800">
+                            Inspiration Images Required
+                          </h3>
+                          <div className="mt-2 text-sm text-yellow-700">
+                            <p>
+                              You need to upload at least one inspiration image
+                              for each item before you can submit this order.
+                            </p>
+                            <p className="mt-1">
+                              <strong>Items missing images:</strong>{" "}
+                              {itemsWithoutImages.length} of{" "}
+                              {order.items.length}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                );
+              })()}
           </div>
         )}
 
@@ -575,29 +642,60 @@ const OrderDetail = () => {
                         Inspiration Images:
                       </h5>
                       {canUploadInspirationImages() && (
-                        <label className="cursor-pointer">
+                        <div>
                           <input
+                            ref={(input) => {
+                              // Store reference for this specific item
+                              if (input) {
+                                input.setAttribute("data-item-id", item._id);
+                                input.setAttribute(
+                                  "data-image-type",
+                                  "inspiration"
+                                );
+                              }
+                            }}
                             type="file"
                             accept="image/*"
                             onChange={(e) => {
+                              console.log("File selected:", e.target.files[0]);
                               if (e.target.files[0]) {
                                 handleImageUpload(
                                   e.target.files[0],
                                   item._id,
                                   "inspiration"
                                 );
+                                // Reset input so same file can be selected again
+                                e.target.value = "";
                               }
                             }}
-                            className="hidden"
+                            style={{ display: "none" }}
+                            id={`inspiration-upload-${item._id}`}
                           />
                           <Button
                             variant="outline"
                             size="small"
                             loading={uploadingImages[`${item._id}-inspiration`]}
+                            onClick={() => {
+                              console.log(
+                                "Upload button clicked for item:",
+                                item._id
+                              );
+                              const input = document.getElementById(
+                                `inspiration-upload-${item._id}`
+                              );
+                              if (input) {
+                                input.click();
+                              } else {
+                                console.error("File input not found");
+                              }
+                            }}
+                            disabled={
+                              uploadingImages[`${item._id}-inspiration`]
+                            }
                           >
                             Upload Image
                           </Button>
-                        </label>
+                        </div>
                       )}
                     </div>
 
@@ -617,29 +715,61 @@ const OrderDetail = () => {
                         Preview Images:
                       </h5>
                       {canUploadPreviewImages() && (
-                        <label className="cursor-pointer">
+                        <div>
                           <input
+                            ref={(input) => {
+                              // Store reference for this specific item
+                              if (input) {
+                                input.setAttribute("data-item-id", item._id);
+                                input.setAttribute(
+                                  "data-image-type",
+                                  "preview"
+                                );
+                              }
+                            }}
                             type="file"
                             accept="image/*"
                             onChange={(e) => {
+                              console.log(
+                                "Preview file selected:",
+                                e.target.files[0]
+                              );
                               if (e.target.files[0]) {
                                 handleImageUpload(
                                   e.target.files[0],
                                   item._id,
                                   "preview"
                                 );
+                                // Reset input so same file can be selected again
+                                e.target.value = "";
                               }
                             }}
-                            className="hidden"
+                            style={{ display: "none" }}
+                            id={`preview-upload-${item._id}`}
                           />
                           <Button
                             variant="outline"
                             size="small"
                             loading={uploadingImages[`${item._id}-preview`]}
+                            onClick={() => {
+                              console.log(
+                                "Preview upload button clicked for item:",
+                                item._id
+                              );
+                              const input = document.getElementById(
+                                `preview-upload-${item._id}`
+                              );
+                              if (input) {
+                                input.click();
+                              } else {
+                                console.error("Preview file input not found");
+                              }
+                            }}
+                            disabled={uploadingImages[`${item._id}-preview`]}
                           >
                             Upload Preview
                           </Button>
-                        </label>
+                        </div>
                       )}
                     </div>
 
