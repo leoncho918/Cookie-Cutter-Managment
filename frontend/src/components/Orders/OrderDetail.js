@@ -1,5 +1,6 @@
-// src/components/Orders/OrderDetail.js - Complete detailed order view and management
-import React, { useState, useEffect } from "react";
+/* Inspiration Images */
+// src/components/Orders/OrderDetail.js - Fixed multiple image upload
+import React, { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
@@ -25,9 +26,8 @@ const OrderDetail = () => {
   const { showError, showSuccess } = useToast();
   const navigate = useNavigate();
 
-  // Debug logging
-  console.log("OrderDetail component loaded with ID:", id);
-  console.log("Current user:", user);
+  // Use ref to track if upload is in progress
+  const uploadInProgressRef = useRef(false);
 
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -58,14 +58,20 @@ const OrderDetail = () => {
   }, [id]);
 
   const loadOrder = async () => {
+    // Don't reload if upload is in progress
+    if (uploadInProgressRef.current) {
+      console.log("🚫 Skipping order reload - upload in progress");
+      return;
+    }
+
     try {
       setLoading(true);
-      console.log("Loading order with ID:", id);
+      console.log("🔄 Loading order with ID:", id);
       const response = await axios.get(`/orders/${id}`);
-      console.log("Order loaded:", response.data);
+      console.log("✅ Order loaded successfully");
       setOrder(response.data);
     } catch (error) {
-      console.error("Error loading order:", error);
+      console.error("❌ Error loading order:", error);
       showError("Failed to load order details");
       navigate("/orders");
     } finally {
@@ -177,15 +183,21 @@ const OrderDetail = () => {
   const handleImageUpload = async (files, itemId, imageType) => {
     if (!files || files.length === 0) return;
 
+    // Convert FileList to Array to prevent issues with component re-renders
+    const fileArray = Array.from(files);
+
     console.log("🔍 Multiple image upload started:", {
-      fileCount: files.length,
+      fileCount: fileArray.length,
       itemId,
       imageType,
       orderId: id,
-      files: Array.from(files).map((f) => f.name),
+      files: fileArray.map((f) => f.name),
     });
 
     try {
+      // Set upload in progress flag
+      uploadInProgressRef.current = true;
+
       setUploadingImages((prev) => ({
         ...prev,
         [`${itemId}-${imageType}`]: true,
@@ -195,9 +207,12 @@ const OrderDetail = () => {
       let failedFiles = [];
 
       // Upload files sequentially to avoid version conflicts
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        console.log(`📤 Uploading file ${i + 1}/${files.length}: ${file.name}`);
+      // Use a traditional for loop with explicit length check
+      for (let i = 0; i < fileArray.length; i++) {
+        const file = fileArray[i];
+        console.log(
+          `📤 Uploading file ${i + 1}/${fileArray.length}: ${file.name}`
+        );
 
         try {
           const formData = new FormData();
@@ -208,46 +223,57 @@ const OrderDetail = () => {
             formData,
             {
               headers: { "Content-Type": "multipart/form-data" },
+              timeout: 30000, // 30 second timeout per file
             }
           );
 
           console.log(`✅ Successfully uploaded: ${file.name}`);
           successCount++;
 
-          // Small delay to prevent overwhelming the server
-          if (i < files.length - 1) {
-            await new Promise((resolve) => setTimeout(resolve, 500));
+          // Small delay to prevent overwhelming the server and allow any state updates
+          if (i < fileArray.length - 1) {
+            console.log(
+              `💤 Waiting before next upload (${i + 2}/${fileArray.length})`
+            );
+            await new Promise((resolve) => setTimeout(resolve, 1000));
           }
         } catch (fileError) {
           console.error(`❌ Failed to upload ${file.name}:`, fileError);
           failedFiles.push(file.name);
+
+          // Continue with next file even if this one failed
+          console.log(`⏭️ Continuing with next file after error`);
         }
       }
 
       console.log(
-        `📊 Upload summary: ${successCount}/${files.length} successful`
+        `📊 Upload summary: ${successCount}/${fileArray.length} successful, ${failedFiles.length} failed`
       );
 
+      // Show appropriate success/error messages
       if (successCount > 0) {
-        if (successCount === files.length) {
-          showSuccess(`All ${files.length} image(s) uploaded successfully!`);
+        if (successCount === fileArray.length) {
+          showSuccess(
+            `All ${fileArray.length} image(s) uploaded successfully!`
+          );
         } else {
           showSuccess(
-            `${successCount} of ${files.length} image(s) uploaded successfully`
+            `${successCount} of ${fileArray.length} image(s) uploaded successfully`
           );
           if (failedFiles.length > 0) {
             showError(`Failed to upload: ${failedFiles.join(", ")}`);
           }
         }
 
-        // Refresh order data to show new images
-        await loadOrder();
+        // Only refresh order data after ALL uploads are complete
+        console.log("🔄 Refreshing order data after all uploads complete");
+        await loadOrderAfterUpload();
       } else {
         showError(
           `Failed to upload any images. ${
             failedFiles.length > 0
               ? `Failed files: ${failedFiles.join(", ")}`
-              : ""
+              : "Unknown error occurred"
           }`
         );
       }
@@ -255,21 +281,73 @@ const OrderDetail = () => {
       console.error("❌ Upload process failed:", error);
       showError("Failed to start upload process");
     } finally {
+      // Clear upload in progress flag
+      uploadInProgressRef.current = false;
+
       setUploadingImages((prev) => ({
         ...prev,
         [`${itemId}-${imageType}`]: false,
       }));
+
+      console.log("🏁 Upload process completed, flags cleared");
+    }
+  };
+
+  // Separate function to load order after upload completes
+  const loadOrderAfterUpload = async () => {
+    try {
+      console.log("🔄 Loading updated order data after upload");
+
+      // Add a small delay to ensure backend has processed the upload
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      const response = await axios.get(`/orders/${id}`);
+      setOrder(response.data);
+      console.log(
+        "✅ Order data refreshed successfully - new image count:",
+        response.data.items.reduce(
+          (total, item) =>
+            total +
+            (item.inspirationImages?.length || 0) +
+            (item.previewImages?.length || 0),
+          0
+        )
+      );
+    } catch (error) {
+      console.error("❌ Error refreshing order data:", error);
+      showError("Failed to refresh order data");
     }
   };
 
   const handleImageDelete = async (itemId, imageKey, imageType) => {
     if (window.confirm("Are you sure you want to delete this image?")) {
       try {
-        await axios.delete(`/upload/${imageType}/${id}/${itemId}/${imageKey}`);
+        console.log("🗑️ Deleting image:", {
+          itemId,
+          imageKey,
+          imageType,
+          orderId: id,
+          deleteUrl: `/upload/${imageType}/${id}/${itemId}/${encodeURIComponent(
+            imageKey
+          )}`,
+        });
+
+        await axios.delete(
+          `/upload/${imageType}/${id}/${itemId}/${encodeURIComponent(imageKey)}`
+        );
         showSuccess("Image deleted successfully");
         loadOrder();
       } catch (error) {
         console.error("Error deleting image:", error);
+        console.error(
+          "Delete URL attempted:",
+          `/upload/${imageType}/${id}/${itemId}/${encodeURIComponent(imageKey)}`
+        );
+        console.error("Error details:", {
+          status: error.response?.status,
+          statusText: error.response?.statusText,
+          data: error.response?.data,
+        });
         showError(error.response?.data?.message || "Failed to delete image");
       }
     }
@@ -280,6 +358,19 @@ const OrderDetail = () => {
   };
 
   const canUploadPreviewImages = () => {
+    return user.role === "admin";
+  };
+
+  const canDeleteInspirationImages = () => {
+    // Bakers can delete their own inspiration images, Admins can delete any inspiration images
+    return (
+      (user.role === "baker" && order.bakerId === user.bakerId) ||
+      user.role === "admin"
+    );
+  };
+
+  const canDeletePreviewImages = () => {
+    // Only admins can delete preview images (since only admins upload them)
     return user.role === "admin";
   };
 
@@ -704,22 +795,21 @@ const OrderDetail = () => {
                   {/* Inspiration Images */}
                   <div className="mb-4">
                     <div className="flex items-center justify-between mb-2">
-                      <h5 className="text-sm font-medium text-gray-700">
-                        Inspiration Images:
-                      </h5>
+                      <div>
+                        <h5 className="text-sm font-medium text-gray-700">
+                          Inspiration Images:
+                        </h5>
+                        {canDeleteInspirationImages() && (
+                          <p className="text-xs text-gray-500 mt-1">
+                            {user.role === "baker"
+                              ? "You can upload and delete your inspiration images"
+                              : "As admin, you can delete any inspiration images"}
+                          </p>
+                        )}
+                      </div>
                       {canUploadInspirationImages() && (
                         <div>
                           <input
-                            ref={(input) => {
-                              // Store reference for this specific item
-                              if (input) {
-                                input.setAttribute("data-item-id", item._id);
-                                input.setAttribute(
-                                  "data-image-type",
-                                  "inspiration"
-                                );
-                              }
-                            }}
                             type="file"
                             accept="image/*"
                             multiple
@@ -770,7 +860,8 @@ const OrderDetail = () => {
                               }
                             }}
                             disabled={
-                              uploadingImages[`${item._id}-inspiration`]
+                              uploadingImages[`${item._id}-inspiration`] ||
+                              uploadInProgressRef.current
                             }
                           >
                             {uploadingImages[`${item._id}-inspiration`]
@@ -793,29 +884,27 @@ const OrderDetail = () => {
                           imageTitle: `Inspiration Image - Item ${index + 1}`,
                         })
                       }
-                      canDelete={canUploadInspirationImages()}
+                      canDelete={canDeleteInspirationImages()}
+                      imageType="inspiration image"
                     />
                   </div>
 
                   {/* Preview Images */}
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <h5 className="text-sm font-medium text-gray-700">
-                        Preview Images:
-                      </h5>
+                      <div>
+                        <h5 className="text-sm font-medium text-gray-700">
+                          Preview Images:
+                        </h5>
+                        {canDeletePreviewImages() && (
+                          <p className="text-xs text-gray-500 mt-1">
+                            As admin, you can upload and delete preview images
+                          </p>
+                        )}
+                      </div>
                       {canUploadPreviewImages() && (
                         <div>
                           <input
-                            ref={(input) => {
-                              // Store reference for this specific item
-                              if (input) {
-                                input.setAttribute("data-item-id", item._id);
-                                input.setAttribute(
-                                  "data-image-type",
-                                  "preview"
-                                );
-                              }
-                            }}
                             type="file"
                             accept="image/*"
                             multiple
@@ -865,7 +954,10 @@ const OrderDetail = () => {
                                 console.error("Preview file input not found");
                               }
                             }}
-                            disabled={uploadingImages[`${item._id}-preview`]}
+                            disabled={
+                              uploadingImages[`${item._id}-preview`] ||
+                              uploadInProgressRef.current
+                            }
                           >
                             {uploadingImages[`${item._id}-preview`]
                               ? "Uploading..."
@@ -887,7 +979,8 @@ const OrderDetail = () => {
                           imageTitle: `Preview Image - Item ${index + 1}`,
                         })
                       }
-                      canDelete={canUploadPreviewImages()}
+                      canDelete={canDeletePreviewImages()}
+                      imageType="preview image"
                     />
                   </div>
                 </>
@@ -1059,6 +1152,7 @@ const OrderDetail = () => {
           </div>
         </div>
       </Modal>
+
       {/* Image View Modal */}
       <Modal
         isOpen={imageModal.isOpen}
@@ -1153,12 +1247,32 @@ const EditItemForm = ({ item, onSave, onCancel }) => {
 };
 
 // Image Gallery Component
-const ImageGallery = ({ images, onDelete, onImageClick, canDelete }) => {
+const ImageGallery = ({
+  images,
+  onDelete,
+  onImageClick,
+  canDelete,
+  imageType = "image",
+}) => {
   if (!images || images.length === 0) {
     return (
       <p className="text-sm text-gray-500 italic">No images uploaded yet</p>
     );
   }
+
+  // Debug: Log image structure
+  console.log("🖼️ ImageGallery - Images data:", {
+    imageType,
+    count: images.length,
+    sampleImage: images[0]
+      ? {
+          url: images[0].url,
+          key: images[0].key,
+          keyLength: images[0].key?.length,
+          hasKey: !!images[0].key,
+        }
+      : null,
+  });
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -1166,7 +1280,7 @@ const ImageGallery = ({ images, onDelete, onImageClick, canDelete }) => {
         <div key={index} className="relative group">
           <img
             src={image.url}
-            alt={`Image ${index + 1}`}
+            alt={`${imageType} ${index + 1}`}
             className="w-full h-24 object-cover rounded-lg border border-gray-200 cursor-pointer hover:opacity-80 transition-opacity"
             onClick={() => onImageClick && onImageClick(image.url)}
             title="Click to view full size"
@@ -1175,6 +1289,12 @@ const ImageGallery = ({ images, onDelete, onImageClick, canDelete }) => {
             <button
               onClick={(e) => {
                 e.stopPropagation(); // Prevent triggering image click
+                console.log("🗑️ Delete button clicked for image:", {
+                  index,
+                  key: image.key,
+                  url: image.url,
+                  imageType,
+                });
                 onDelete(image.key);
               }}
               className="absolute top-1 right-1 bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-700"

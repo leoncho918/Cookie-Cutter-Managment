@@ -1,4 +1,4 @@
-// routes/upload.js - File upload routes with S3 integration
+// routes/upload.js - Updated with correct delete permissions
 const express = require("express");
 const multer = require("multer");
 const sharp = require("sharp");
@@ -395,7 +395,7 @@ router.post(
   }
 );
 
-// Delete inspiration image
+// Delete inspiration image - Updated permissions
 router.delete(
   "/inspiration/:orderId/:itemId/:imageKey",
   requireBakerOrAdmin,
@@ -403,44 +403,113 @@ router.delete(
     try {
       const { orderId, itemId, imageKey } = req.params;
 
+      console.log("🗑️ Delete inspiration image request:", {
+        orderId,
+        itemId,
+        imageKey,
+        decodedImageKey: decodeURIComponent(imageKey),
+        userRole: req.user.role,
+        userEmail: req.user.email,
+      });
+
       // Find order and verify permissions
       const order = await Order.findById(orderId);
       if (!order) {
+        console.log("❌ Order not found:", orderId);
         return res.status(404).json({ message: "Order not found" });
       }
 
-      // Check permissions
-      if (req.user.role === "baker" && order.bakerId !== req.user.bakerId) {
-        return res.status(403).json({ message: "Access denied to this order" });
+      // Check permissions: Bakers can delete their own inspiration images, Admins can delete any
+      if (req.user.role === "baker") {
+        if (order.bakerId !== req.user.bakerId) {
+          console.log("❌ Baker access denied - not their order:", {
+            requestingBaker: req.user.bakerId,
+            orderBaker: order.bakerId,
+          });
+          return res
+            .status(403)
+            .json({ message: "Access denied to this order" });
+        }
       }
+      // Admin can delete any inspiration image, so no additional check needed
 
       // Find the specific item
       const item = order.items.id(itemId);
       if (!item) {
+        console.log("❌ Item not found:", itemId);
         return res.status(404).json({ message: "Item not found" });
       }
 
-      // Find and remove the image
-      const imageIndex = item.inspirationImages.findIndex(
-        (img) => img.key === imageKey
+      // Decode the image key in case it was URL encoded
+      const decodedImageKey = decodeURIComponent(imageKey);
+
+      console.log("🔍 Looking for image with key:", {
+        originalKey: imageKey,
+        decodedKey: decodedImageKey,
+        availableKeys: item.inspirationImages.map((img) => img.key),
+      });
+
+      // Find and remove the image - try both encoded and decoded versions
+      let imageIndex = item.inspirationImages.findIndex(
+        (img) => img.key === imageKey || img.key === decodedImageKey
       );
+
       if (imageIndex === -1) {
-        return res.status(404).json({ message: "Image not found" });
+        console.log("❌ Image not found with key:", {
+          searchedFor: [imageKey, decodedImageKey],
+          availableImages: item.inspirationImages.map((img, idx) => ({
+            index: idx,
+            key: img.key,
+            url: img.url,
+          })),
+        });
+        return res.status(404).json({
+          message: "Image not found",
+          searchedKeys: [imageKey, decodedImageKey],
+          availableKeys: item.inspirationImages.map((img) => img.key),
+        });
       }
 
       const image = item.inspirationImages[imageIndex];
 
+      console.log("🗑️ Found image to delete:", {
+        index: imageIndex,
+        key: image.key,
+        url: image.url,
+      });
+
       // Delete from S3
-      await deleteFromS3(image.key);
+      const s3DeleteSuccess = await deleteFromS3(image.key);
+      if (!s3DeleteSuccess) {
+        console.log(
+          "⚠️ S3 deletion failed but continuing with database cleanup"
+        );
+      }
 
       // Remove from database
       item.inspirationImages.splice(imageIndex, 1);
       await order.save();
 
-      res.json({ message: "Inspiration image deleted successfully" });
+      console.log(
+        "✅ Inspiration image deleted successfully by:",
+        req.user.role,
+        req.user.email
+      );
+
+      res.json({
+        message: "Inspiration image deleted successfully",
+        deletedImage: {
+          key: image.key,
+          s3DeleteSuccess,
+        },
+      });
     } catch (error) {
-      console.error("Error deleting inspiration image:", error);
-      res.status(500).json({ message: "Server error deleting image" });
+      console.error("❌ Error deleting inspiration image:", error);
+      res.status(500).json({
+        message: "Server error deleting image",
+        error:
+          process.env.NODE_ENV === "development" ? error.message : undefined,
+      });
     }
   }
 );
@@ -453,8 +522,18 @@ router.delete(
     try {
       const { orderId, itemId, imageKey } = req.params;
 
-      // Only admins can delete preview images (or admins can delete any images)
+      console.log("🗑️ Delete preview image request:", {
+        orderId,
+        itemId,
+        imageKey,
+        decodedImageKey: decodeURIComponent(imageKey),
+        userRole: req.user.role,
+        userEmail: req.user.email,
+      });
+
+      // Only admins can delete preview images
       if (req.user.role !== "admin") {
+        console.log("❌ Non-admin trying to delete preview image");
         return res
           .status(403)
           .json({ message: "Only admins can delete preview images" });
@@ -463,387 +542,86 @@ router.delete(
       // Find order
       const order = await Order.findById(orderId);
       if (!order) {
+        console.log("❌ Order not found:", orderId);
         return res.status(404).json({ message: "Order not found" });
       }
 
       // Find the specific item
       const item = order.items.id(itemId);
       if (!item) {
+        console.log("❌ Item not found:", itemId);
         return res.status(404).json({ message: "Item not found" });
       }
 
-      // Find and remove the image
-      const imageIndex = item.previewImages.findIndex(
-        (img) => img.key === imageKey
+      // Decode the image key in case it was URL encoded
+      const decodedImageKey = decodeURIComponent(imageKey);
+
+      console.log("🔍 Looking for preview image with key:", {
+        originalKey: imageKey,
+        decodedKey: decodedImageKey,
+        availableKeys: item.previewImages.map((img) => img.key),
+      });
+
+      // Find and remove the image - try both encoded and decoded versions
+      let imageIndex = item.previewImages.findIndex(
+        (img) => img.key === imageKey || img.key === decodedImageKey
       );
+
       if (imageIndex === -1) {
-        return res.status(404).json({ message: "Image not found" });
+        console.log("❌ Preview image not found with key:", {
+          searchedFor: [imageKey, decodedImageKey],
+          availableImages: item.previewImages.map((img, idx) => ({
+            index: idx,
+            key: img.key,
+            url: img.url,
+          })),
+        });
+        return res.status(404).json({
+          message: "Image not found",
+          searchedKeys: [imageKey, decodedImageKey],
+          availableKeys: item.previewImages.map((img) => img.key),
+        });
       }
 
       const image = item.previewImages[imageIndex];
 
+      console.log("🗑️ Found preview image to delete:", {
+        index: imageIndex,
+        key: image.key,
+        url: image.url,
+      });
+
       // Delete from S3
-      await deleteFromS3(image.key);
+      const s3DeleteSuccess = await deleteFromS3(image.key);
+      if (!s3DeleteSuccess) {
+        console.log(
+          "⚠️ S3 deletion failed but continuing with database cleanup"
+        );
+      }
 
       // Remove from database
       item.previewImages.splice(imageIndex, 1);
       await order.save();
 
-      res.json({ message: "Preview image deleted successfully" });
-    } catch (error) {
-      console.error("Error deleting preview image:", error);
-      res.status(500).json({ message: "Server error deleting image" });
-    }
-  }
-);
-
-// Get signed URL for direct upload (alternative method)
-router.post("/signed-url", requireBakerOrAdmin, async (req, res) => {
-  try {
-    const { fileName, fileType, imageType, orderId, itemId } = req.body;
-
-    if (!fileName || !fileType || !imageType || !orderId || !itemId) {
-      return res.status(400).json({ message: "Missing required parameters" });
-    }
-
-    if (!["inspiration", "preview"].includes(imageType)) {
-      return res.status(400).json({ message: "Invalid image type" });
-    }
-
-    // Check permissions
-    if (imageType === "preview" && req.user.role !== "admin") {
-      return res
-        .status(403)
-        .json({ message: "Only admins can upload preview images" });
-    }
-
-    // Generate unique key
-    const key = `${imageType}/${orderId}/${itemId}/${uuidv4()}-${fileName}`;
-
-    // Generate signed URL
-    const params = {
-      Bucket: BUCKET_NAME,
-      Key: key,
-      Expires: 300, // 5 minutes
-      ContentType: fileType,
-      ACL: "public-read",
-    };
-
-    const signedUrl = s3.getSignedUrl("putObject", params);
-    const imageUrl = `https://${BUCKET_NAME}.s3.${
-      process.env.AWS_REGION || "us-east-1"
-    }.amazonaws.com/${key}`;
-
-    res.json({
-      signedUrl,
-      imageUrl,
-      key,
-    });
-  } catch (error) {
-    console.error("Error generating signed URL:", error);
-    res.status(500).json({ message: "Server error generating signed URL" });
-  }
-});
-
-// Confirm image upload (for use with signed URLs)
-router.post(
-  "/confirm/:orderId/:itemId",
-  requireBakerOrAdmin,
-  async (req, res) => {
-    try {
-      const { orderId, itemId } = req.params;
-      const { imageUrl, imageKey, imageType } = req.body;
-
-      if (!imageUrl || !imageKey || !imageType) {
-        return res.status(400).json({ message: "Missing required parameters" });
-      }
-
-      // Find order and verify permissions
-      const order = await Order.findById(orderId);
-      if (!order) {
-        return res.status(404).json({ message: "Order not found" });
-      }
-
-      if (req.user.role === "baker" && order.bakerId !== req.user.bakerId) {
-        return res.status(403).json({ message: "Access denied to this order" });
-      }
-
-      // Find the specific item
-      const item = order.items.id(itemId);
-      if (!item) {
-        return res.status(404).json({ message: "Item not found" });
-      }
-
-      // Add image to appropriate array
-      const imageData = {
-        url: imageUrl,
-        key: imageKey,
-        uploadedAt: new Date(),
-      };
-
-      if (imageType === "inspiration") {
-        item.inspirationImages.push(imageData);
-      } else if (imageType === "preview") {
-        item.previewImages.push(imageData);
-      } else {
-        return res.status(400).json({ message: "Invalid image type" });
-      }
-
-      await order.save();
-
-      res.json({
-        message: `${imageType} image confirmed successfully`,
-        image: imageData,
-      });
-    } catch (error) {
-      console.error("Error confirming image upload:", error);
-      res.status(500).json({ message: "Server error confirming upload" });
-    }
-  }
-);
-
-module.exports = router;
-
-// Upload inspiration image (Baker only)
-router.post(
-  "/inspiration/:orderId/:itemId",
-  requireBakerOrAdmin,
-  upload.single("image"),
-  async (req, res) => {
-    try {
-      if (!req.file) {
-        return res.status(400).json({ message: "No image file provided" });
-      }
-
-      const { orderId, itemId } = req.params;
-
-      // Find order and verify permissions
-      const order = await Order.findById(orderId);
-      if (!order) {
-        return res.status(404).json({ message: "Order not found" });
-      }
-
-      if (req.user.role === "baker" && order.bakerId !== req.user.bakerId) {
-        return res.status(403).json({ message: "Access denied to this order" });
-      }
-
-      // Find the specific item
-      const item = order.items.id(itemId);
-      if (!item) {
-        return res.status(404).json({ message: "Item not found" });
-      }
-
-      // Only bakers can upload inspiration images
-      if (req.user.role !== "baker") {
-        return res
-          .status(403)
-          .json({ message: "Only bakers can upload inspiration images" });
-      }
-
-      // Compress image
-      const compressedBuffer = await compressImage(req.file.buffer);
-
-      // Generate unique key for S3
-      const fileExtension = req.file.originalname.split(".").pop();
-      const key = `inspiration/${orderId}/${itemId}/${uuidv4()}.${fileExtension}`;
-
-      // Upload to S3
-      const uploadResult = await uploadToS3(
-        compressedBuffer,
-        key,
-        req.file.mimetype
+      console.log(
+        "✅ Preview image deleted successfully by admin:",
+        req.user.email
       );
 
-      // Add image to item
-      item.inspirationImages.push({
-        url: uploadResult.url,
-        key: uploadResult.key,
-        uploadedAt: new Date(),
-      });
-
-      await order.save();
-
       res.json({
-        message: "Inspiration image uploaded successfully",
-        image: {
-          url: uploadResult.url,
-          key: uploadResult.key,
+        message: "Preview image deleted successfully",
+        deletedImage: {
+          key: image.key,
+          s3DeleteSuccess,
         },
       });
     } catch (error) {
-      console.error("Error uploading inspiration image:", error);
-      res.status(500).json({ message: "Server error uploading image" });
-    }
-  }
-);
-
-// Upload preview image (Admin only)
-router.post(
-  "/preview/:orderId/:itemId",
-  requireBakerOrAdmin,
-  upload.single("image"),
-  async (req, res) => {
-    try {
-      if (!req.file) {
-        return res.status(400).json({ message: "No image file provided" });
-      }
-
-      const { orderId, itemId } = req.params;
-
-      // Only admins can upload preview images
-      if (req.user.role !== "admin") {
-        return res
-          .status(403)
-          .json({ message: "Only admins can upload preview images" });
-      }
-
-      // Find order
-      const order = await Order.findById(orderId);
-      if (!order) {
-        return res.status(404).json({ message: "Order not found" });
-      }
-
-      // Find the specific item
-      const item = order.items.id(itemId);
-      if (!item) {
-        return res.status(404).json({ message: "Item not found" });
-      }
-
-      // Compress image
-      const compressedBuffer = await compressImage(req.file.buffer);
-
-      // Generate unique key for S3
-      const fileExtension = req.file.originalname.split(".").pop();
-      const key = `preview/${orderId}/${itemId}/${uuidv4()}.${fileExtension}`;
-
-      // Upload to S3
-      const uploadResult = await uploadToS3(
-        compressedBuffer,
-        key,
-        req.file.mimetype
-      );
-
-      // Add image to item
-      item.previewImages.push({
-        url: uploadResult.url,
-        key: uploadResult.key,
-        uploadedAt: new Date(),
+      console.error("❌ Error deleting preview image:", error);
+      res.status(500).json({
+        message: "Server error deleting image",
+        error:
+          process.env.NODE_ENV === "development" ? error.message : undefined,
       });
-
-      await order.save();
-
-      res.json({
-        message: "Preview image uploaded successfully",
-        image: {
-          url: uploadResult.url,
-          key: uploadResult.key,
-        },
-      });
-    } catch (error) {
-      console.error("Error uploading preview image:", error);
-      res.status(500).json({ message: "Server error uploading image" });
-    }
-  }
-);
-
-// Delete inspiration image
-router.delete(
-  "/inspiration/:orderId/:itemId/:imageKey",
-  requireBakerOrAdmin,
-  async (req, res) => {
-    try {
-      const { orderId, itemId, imageKey } = req.params;
-
-      // Find order and verify permissions
-      const order = await Order.findById(orderId);
-      if (!order) {
-        return res.status(404).json({ message: "Order not found" });
-      }
-
-      // Check permissions
-      if (req.user.role === "baker" && order.bakerId !== req.user.bakerId) {
-        return res.status(403).json({ message: "Access denied to this order" });
-      }
-
-      // Find the specific item
-      const item = order.items.id(itemId);
-      if (!item) {
-        return res.status(404).json({ message: "Item not found" });
-      }
-
-      // Find and remove the image
-      const imageIndex = item.inspirationImages.findIndex(
-        (img) => img.key === imageKey
-      );
-      if (imageIndex === -1) {
-        return res.status(404).json({ message: "Image not found" });
-      }
-
-      const image = item.inspirationImages[imageIndex];
-
-      // Delete from S3
-      await deleteFromS3(image.key);
-
-      // Remove from database
-      item.inspirationImages.splice(imageIndex, 1);
-      await order.save();
-
-      res.json({ message: "Inspiration image deleted successfully" });
-    } catch (error) {
-      console.error("Error deleting inspiration image:", error);
-      res.status(500).json({ message: "Server error deleting image" });
-    }
-  }
-);
-
-// Delete preview image (Admin only)
-router.delete(
-  "/preview/:orderId/:itemId/:imageKey",
-  requireBakerOrAdmin,
-  async (req, res) => {
-    try {
-      const { orderId, itemId, imageKey } = req.params;
-
-      // Only admins can delete preview images (or admins can delete any images)
-      if (req.user.role !== "admin") {
-        return res
-          .status(403)
-          .json({ message: "Only admins can delete preview images" });
-      }
-
-      // Find order
-      const order = await Order.findById(orderId);
-      if (!order) {
-        return res.status(404).json({ message: "Order not found" });
-      }
-
-      // Find the specific item
-      const item = order.items.id(itemId);
-      if (!item) {
-        return res.status(404).json({ message: "Item not found" });
-      }
-
-      // Find and remove the image
-      const imageIndex = item.previewImages.findIndex(
-        (img) => img.key === imageKey
-      );
-      if (imageIndex === -1) {
-        return res.status(404).json({ message: "Image not found" });
-      }
-
-      const image = item.previewImages[imageIndex];
-
-      // Delete from S3
-      await deleteFromS3(image.key);
-
-      // Remove from database
-      item.previewImages.splice(imageIndex, 1);
-      await order.save();
-
-      res.json({ message: "Preview image deleted successfully" });
-    } catch (error) {
-      console.error("Error deleting preview image:", error);
-      res.status(500).json({ message: "Server error deleting image" });
     }
   }
 );
