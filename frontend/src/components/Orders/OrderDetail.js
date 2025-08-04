@@ -1,4 +1,4 @@
-// src/components/Orders/OrderDetail.js - Complete OrderDetail with Socket.IO integration
+// src/components/Orders/OrderDetail.js - Complete OrderDetail with enhanced Socket.IO integration
 import React, { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
@@ -29,10 +29,12 @@ const OrderDetail = () => {
   // Socket.IO integration
   const {
     isConnected,
+    socket,
     joinOrderRoom,
     leaveOrderRoom,
     subscribeToOrderUpdates,
     subscribeToImageUpdates,
+    reconnect,
   } = useSocket();
 
   // Use ref to track if upload is in progress
@@ -47,6 +49,10 @@ const OrderDetail = () => {
     targetStage: "",
     price: "",
     comments: "",
+  const [imageModal, setImageModal] = useState({
+    isOpen: false,
+    imageUrl: "",
+    imageTitle: "",
   });
   const [completionModal, setCompletionModal] = useState({
     isOpen: false,
@@ -54,10 +60,10 @@ const OrderDetail = () => {
     paymentMethod: "",
   });
   const [uploadingImages, setUploadingImages] = useState({});
-  const [imageModal, setImageModal] = useState({
+  const [addItemModal, setAddItemModal] = useState({
     isOpen: false,
-    imageUrl: "",
-    imageTitle: "",
+    type: ITEM_TYPES.CUTTER,
+    additionalComments: "",
   });
 
   useEffect(() => {
@@ -69,18 +75,23 @@ const OrderDetail = () => {
   // Join order room for real-time updates
   useEffect(() => {
     if (id && isConnected) {
+      console.log("🏠 Joining order room for real-time updates:", id);
       joinOrderRoom(id);
 
       return () => {
+        console.log("🚪 Leaving order room:", id);
         leaveOrderRoom(id);
       };
     }
   }, [id, isConnected, joinOrderRoom, leaveOrderRoom]);
 
-  // Subscribe to real-time order updates
+  // Enhanced Socket.IO integration with comprehensive event handling
   useEffect(() => {
     if (!isConnected) return;
 
+    console.log("🔌 Setting up enhanced socket listeners for order:", id);
+
+    // Subscribe to order updates with enhanced handling
     const unsubscribeOrder = subscribeToOrderUpdates((updateData) => {
       console.log("📡 Received order update:", updateData);
 
@@ -88,11 +99,43 @@ const OrderDetail = () => {
       if (updateData.orderId === id) {
         const { eventType, updatedBy, order: updatedOrder } = updateData;
 
+        // Handle deletion immediately to prevent rendering errors
+        if (eventType === "deleted") {
+          console.log("🗑️ Order deleted, redirecting to orders list");
+          setOrder(null); // Clear order data immediately
+          showInfo("This order has been deleted");
+          navigate("/orders");
+          return;
+        }
+
         // Don't show notifications for updates made by the current user
-        if (updatedBy.email !== user.email) {
-          const message = `Order ${eventType.replace("_", " ")} by ${
-            updatedBy.email
-          }`;
+        const isOwnUpdate = updatedBy.email === user.email;
+
+        if (!isOwnUpdate) {
+          // Show different messages based on event type
+          let message = "";
+          switch (eventType) {
+            case "updated":
+              message = `Order updated by ${updatedBy.email}`;
+              break;
+            case "stage_changed":
+              message = `Order stage changed to "${updatedOrder.stage}" by ${updatedBy.email}`;
+              break;
+            case "item_added":
+              message = `New item added by ${updatedBy.email}`;
+              break;
+            case "item_updated":
+              message = `Item updated by ${updatedBy.email}`;
+              break;
+            case "item_deleted":
+              message = `Item deleted by ${updatedBy.email}`;
+              break;
+            case "completion_updated":
+              message = `Completion details updated by ${updatedBy.email}`;
+              break;
+            default:
+              message = `Order ${eventType.replace("_", " ")} by ${updatedBy.email}`;
+          }
           showInfo(message);
         }
 
@@ -100,19 +143,13 @@ const OrderDetail = () => {
         if (updatedOrder) {
           setOrder(updatedOrder);
         } else {
-          // If order was deleted, redirect
-          if (eventType === "deleted") {
-            showInfo("This order has been deleted");
-            navigate("/orders");
-            return;
-          }
-
           // Otherwise refresh the order data
           loadOrder();
         }
       }
     });
 
+    // Subscribe to image updates with enhanced handling
     const unsubscribeImage = subscribeToImageUpdates((updateData) => {
       console.log("📡 Received image update:", updateData);
 
@@ -122,32 +159,98 @@ const OrderDetail = () => {
 
         // Don't show notifications for updates made by the current user
         if (updatedBy.email !== user.email) {
-          const action =
-            eventType === "image_uploaded" ? "uploaded" : "deleted";
+          const action = eventType === "image_uploaded" ? "uploaded" : "deleted";
           const message = `${imageType} image ${action} by ${updatedBy.email}`;
           showInfo(message);
         }
 
-        // Refresh order data to show updated images
-        loadOrder();
+        // Always refresh order data to show updated images, regardless of who made the change
+        console.log("🖼️ Image update detected, refreshing order data");
+        loadOrderAfterUpload();
       }
     });
 
+    // Subscribe to order-specific events
+    const handleOrderDeleted = (data) => {
+      if (data.orderId === id) {
+        console.log("🗑️ Order deleted event received:", data);
+        setOrder(null); // Clear order data immediately
+        showInfo(`Order ${data.orderNumber} has been deleted`);
+        navigate("/orders");
+      }
+    };
+
+    const handleOrderStageChanged = (data) => {
+      if (data.orderId === id && data.changedBy.email !== user.email) {
+        showSuccess(`Order stage changed to: ${data.newStage}`);
+      }
+    };
+
+    const handleOrderItemsChanged = (data) => {
+      if (data.orderId === id && data.updatedBy.email !== user.email) {
+        const eventMessages = {
+          item_added: "New item added to order",
+          item_updated: "Order item updated", 
+          item_deleted: "Item removed from order",
+        };
+        showInfo(eventMessages[data.eventType] || "Order items changed");
+      }
+    };
+
+    const handleOrderImagesChanged = (data) => {
+      if (data.orderId === id) {
+        console.log("🖼️ Order images changed event received, refreshing display");
+        // Use the specialized refresh function for better handling
+        loadOrderAfterUpload();
+      }
+    };
+
+    const handleOrderRefreshRequested = (data) => {
+      if (data.orderId === id) {
+        console.log("🔄 Order refresh requested by another user");
+        loadOrder();
+      }
+    };
+
+    // Set up Socket.IO event listeners
+    if (socket) {
+      socket.on("order-deleted", handleOrderDeleted);
+      socket.on("order-stage-changed", handleOrderStageChanged);
+      socket.on("order-items-changed", handleOrderItemsChanged);
+      socket.on("order-images-changed", handleOrderImagesChanged);
+      socket.on("order-refresh-requested", handleOrderRefreshRequested);
+    }
+
     return () => {
+      console.log("🔌 Cleaning up enhanced socket listeners");
+      
       if (unsubscribeOrder) unsubscribeOrder();
       if (unsubscribeImage) unsubscribeImage();
+      
+      if (socket) {
+        socket.off("order-deleted", handleOrderDeleted);
+        socket.off("order-stage-changed", handleOrderStageChanged);
+        socket.off("order-items-changed", handleOrderItemsChanged);
+        socket.off("order-images-changed", handleOrderImagesChanged);
+        socket.off("order-refresh-requested", handleOrderRefreshRequested);
+      }
     };
   }, [
     id,
     isConnected,
+    socket,
     subscribeToOrderUpdates,
     subscribeToImageUpdates,
     user.email,
     showInfo,
+    showSuccess,
     navigate,
   ]);
 
-  const loadOrder = async () => {
+  // Enhanced load order function with retry logic
+  const loadOrderWithRetry = async (retryCount = 0) => {
+    const maxRetries = 3;
+    
     // Don't reload if upload is in progress
     if (uploadInProgressRef.current) {
       console.log("🚫 Skipping order reload - upload in progress");
@@ -156,18 +259,43 @@ const OrderDetail = () => {
 
     try {
       setLoading(true);
-      console.log("🔄 Loading order with ID:", id);
+      console.log(`🔄 Loading order with ID: ${id} (attempt ${retryCount + 1})`);
+      
       const response = await axios.get(`/orders/${id}`);
       console.log("✅ Order loaded successfully");
       setOrder(response.data);
-    } catch (error) {
-      console.error("❌ Error loading order:", error);
-      showError("Failed to load order details");
-      navigate("/orders");
-    } finally {
+      
+      // Reset retry count on successful load
       setLoading(false);
+    } catch (error) {
+      console.error(`❌ Error loading order (attempt ${retryCount + 1}):`, error);
+      
+      if (retryCount < maxRetries && error.response?.status !== 404) {
+        // Retry with exponential backoff for non-404 errors
+        const delay = Math.pow(2, retryCount) * 1000; // 1s, 2s, 4s
+        console.log(`⏳ Retrying in ${delay}ms...`);
+        
+        setTimeout(() => {
+          loadOrderWithRetry(retryCount + 1);
+        }, delay);
+      } else {
+        setLoading(false);
+        
+        if (error.response?.status === 404) {
+          showError("Order not found");
+          navigate("/orders");
+        } else {
+          showError("Failed to load order details");
+          if (retryCount >= maxRetries) {
+            showError("Multiple attempts failed. Please refresh the page.");
+          }
+        }
+      }
     }
   };
+
+  // Use the enhanced load order function
+  const loadOrder = loadOrderWithRetry;
 
   const handleStageChange = async () => {
     const { targetStage, price, comments } = stageModal;
@@ -253,41 +381,72 @@ const OrderDetail = () => {
     }
   };
 
-  const handleOrderDelete = async () => {
+  const handleAddItem = async () => {
+    const { type, additionalComments } = addItemModal;
+
+    try {
+      setActionLoading(true);
+
+      await axios.post(`/orders/${id}/items`, {
+        type,
+        additionalComments,
+      });
+
+      showSuccess("Item added successfully");
+      loadOrder();
+      setAddItemModal({
+        isOpen: false,
+        type: ITEM_TYPES.CUTTER,
+        additionalComments: "",
+      });
+    } catch (error) {
+      console.error("Error adding item:", error);
+      showError(error.response?.data?.message || "Failed to add item");
+    } finally {
+      setActionLoading(false);
+    }
+  };
     if (
       window.confirm(
         "Are you sure you want to delete this entire order? This action cannot be undone."
       )
     ) {
       try {
+        console.log("🗑️ Initiating order deletion:", id);
+        setLoading(true); // Show loading state during deletion
+        
         await axios.delete(`/orders/${id}`);
+        
+        console.log("✅ Order deleted successfully");
         showSuccess("Order deleted successfully");
+        
+        // Clear order state and navigate immediately
+        setOrder(null);
         navigate("/orders");
       } catch (error) {
-        console.error("Error deleting order:", error);
+        console.error("❌ Error deleting order:", error);
         showError(error.response?.data?.message || "Failed to delete order");
+        setLoading(false); // Reset loading state on error
       }
     }
   };
 
-  const handleImageUpload = async (files, itemId, imageType) => {
+  // Enhanced image upload with progress tracking
+  const handleImageUploadWithProgress = async (files, itemId, imageType) => {
     if (!files || files.length === 0) return;
 
-    // Convert FileList to Array to prevent issues with component re-renders
     const fileArray = Array.from(files);
-
-    console.log("🔍 Multiple image upload started:", {
+    console.log("🔍 Enhanced image upload started:", {
       fileCount: fileArray.length,
       itemId,
       imageType,
       orderId: id,
-      files: fileArray.map((f) => f.name),
     });
 
     try {
       // Set upload in progress flag
       uploadInProgressRef.current = true;
-
+      
       setUploadingImages((prev) => ({
         ...prev,
         [`${itemId}-${imageType}`]: true,
@@ -296,90 +455,74 @@ const OrderDetail = () => {
       let successCount = 0;
       let failedFiles = [];
 
-      // Upload files sequentially to avoid version conflicts
-      // Use a traditional for loop with explicit length check
+      // Show initial progress
+      if (fileArray.length > 1) {
+        showInfo(`Uploading ${fileArray.length} image(s)...`);
+      }
+
       for (let i = 0; i < fileArray.length; i++) {
         const file = fileArray[i];
-        console.log(
-          `📤 Uploading file ${i + 1}/${fileArray.length}: ${file.name}`
-        );
+        const progress = Math.round(((i + 1) / fileArray.length) * 100);
+        
+        console.log(`📤 Uploading ${i + 1}/${fileArray.length}: ${file.name} (${progress}%)`);
 
         try {
           const formData = new FormData();
           formData.append("image", file);
 
-          const response = await axios.post(
-            `/upload/${imageType}/${id}/${itemId}`,
-            formData,
-            {
-              headers: { "Content-Type": "multipart/form-data" },
-              timeout: 30000, // 30 second timeout per file
-            }
-          );
+          const response = await axios.post(`/upload/${imageType}/${id}/${itemId}`, formData, {
+            headers: { "Content-Type": "multipart/form-data" },
+            timeout: 30000,
+          });
 
-          console.log(`✅ Successfully uploaded: ${file.name}`);
+          console.log(`✅ Upload response for ${file.name}:`, response.data);
           successCount++;
-
-          // Small delay to prevent overwhelming the server and allow any state updates
-          if (i < fileArray.length - 1) {
-            console.log(
-              `💤 Waiting before next upload (${i + 2}/${fileArray.length})`
-            );
-            await new Promise((resolve) => setTimeout(resolve, 1000));
+          
+          // Show progress for multiple files
+          if (fileArray.length > 1) {
+            showInfo(`Uploaded ${successCount}/${fileArray.length} images`);
           }
+
         } catch (fileError) {
           console.error(`❌ Failed to upload ${file.name}:`, fileError);
           failedFiles.push(file.name);
+        }
 
-          // Continue with next file even if this one failed
-          console.log(`⏭️ Continuing with next file after error`);
+        // Small delay between uploads to prevent overwhelming
+        if (i < fileArray.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 500));
         }
       }
 
-      console.log(
-        `📊 Upload summary: ${successCount}/${fileArray.length} successful, ${failedFiles.length} failed`
-      );
-
-      // Show appropriate success/error messages
+      // Final success/error messages
       if (successCount > 0) {
-        if (successCount === fileArray.length) {
-          showSuccess(
-            `All ${fileArray.length} image(s) uploaded successfully!`
-          );
-        } else {
-          showSuccess(
-            `${successCount} of ${fileArray.length} image(s) uploaded successfully`
-          );
-          if (failedFiles.length > 0) {
-            showError(`Failed to upload: ${failedFiles.join(", ")}`);
-          }
-        }
+        const message = successCount === fileArray.length 
+          ? fileArray.length === 1 
+            ? "Image uploaded successfully!"
+            : `All ${fileArray.length} image(s) uploaded successfully!`
+          : `${successCount} of ${fileArray.length} image(s) uploaded successfully`;
+        showSuccess(message);
 
-        // Only refresh order data after ALL uploads are complete
-        console.log("🔄 Refreshing order data after all uploads complete");
+        // Force refresh order data to show new images
+        console.log("🔄 Refreshing order data to show new images...");
         await loadOrderAfterUpload();
       } else {
-        showError(
-          `Failed to upload any images. ${
-            failedFiles.length > 0
-              ? `Failed files: ${failedFiles.join(", ")}`
-              : "Unknown error occurred"
-          }`
-        );
+        showError(`Failed to upload any images`);
       }
+
+      if (failedFiles.length > 0) {
+        showError(`Failed to upload: ${failedFiles.join(", ")}`);
+      }
+
     } catch (error) {
       console.error("❌ Upload process failed:", error);
-      showError("Failed to start upload process");
+      showError("Upload process failed");
     } finally {
-      // Clear upload in progress flag
       uploadInProgressRef.current = false;
-
       setUploadingImages((prev) => ({
         ...prev,
         [`${itemId}-${imageType}`]: false,
       }));
-
-      console.log("🏁 Upload process completed, flags cleared");
     }
   };
 
@@ -388,13 +531,13 @@ const OrderDetail = () => {
     try {
       console.log("🔄 Loading updated order data after upload");
 
-      // Add a small delay to ensure backend has processed the upload
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      // Add a delay to ensure backend has processed the upload
+      await new Promise((resolve) => setTimeout(resolve, 1000));
 
       const response = await axios.get(`/orders/${id}`);
       setOrder(response.data);
-      console.log(
-        "✅ Order data refreshed successfully - new image count:",
+      
+      console.log("✅ Order data refreshed successfully - new image count:", 
         response.data.items.reduce(
           (total, item) =>
             total +
@@ -405,9 +548,12 @@ const OrderDetail = () => {
       );
     } catch (error) {
       console.error("❌ Error refreshing order data:", error);
-      showError("Failed to refresh order data");
+      // Don't show error to user as upload was successful
+      console.warn("Upload was successful but couldn't refresh display immediately");
     }
   };
+
+  const handleImageUpload = handleImageUploadWithProgress;
 
   const handleImageDelete = async (itemId, imageKey, imageType) => {
     if (window.confirm("Are you sure you want to delete this image?")) {
@@ -419,7 +565,7 @@ const OrderDetail = () => {
           orderId: id,
         });
 
-        // Use the new unified delete endpoint
+        // Use the unified delete endpoint
         const response = await axios.post(`/upload/delete`, {
           orderId: id,
           itemId: itemId,
@@ -432,22 +578,12 @@ const OrderDetail = () => {
         loadOrder();
       } catch (error) {
         console.error("❌ Error deleting image:", error);
-        console.error("Delete request details:", {
-          orderId: id,
-          itemId,
-          imageKey,
-          imageType,
-        });
-        console.error("Error details:", {
-          status: error.response?.status,
-          statusText: error.response?.statusText,
-          data: error.response?.data,
-        });
         showError(error.response?.data?.message || "Failed to delete image");
       }
     }
   };
 
+  // Permission checks
   const canUploadInspirationImages = () => {
     return user.role === "baker" && order.bakerId === user.bakerId;
   };
@@ -457,7 +593,6 @@ const OrderDetail = () => {
   };
 
   const canDeleteInspirationImages = () => {
-    // Bakers can delete their own inspiration images, Admins can delete any inspiration images
     return (
       (user.role === "baker" && order.bakerId === user.bakerId) ||
       user.role === "admin"
@@ -465,8 +600,42 @@ const OrderDetail = () => {
   };
 
   const canDeletePreviewImages = () => {
-    // Only admins can delete preview images (since only admins upload them)
     return user.role === "admin";
+  };
+
+  const canAddItems = () => {
+    return (
+      user.role === "baker" &&
+      order.bakerId === user.bakerId &&
+      order.stage === ORDER_STAGES.DRAFT
+    );
+  };
+
+  // Enhanced connection status display
+  const renderConnectionStatus = () => {
+    return (
+      <div className="flex items-center space-x-2">
+        <div
+          className={`w-2 h-2 rounded-full ${
+            isConnected ? "bg-green-500 animate-pulse" : "bg-red-500"
+          }`}
+        />
+        <span className="text-xs text-gray-500">
+          {isConnected ? "Live updates active" : "Offline - updates paused"}
+        </span>
+        {!isConnected && (
+          <button
+            onClick={() => {
+              console.log("🔄 Manual reconnect requested");
+              reconnect();
+            }}
+            className="text-xs text-blue-600 hover:text-blue-800 underline"
+          >
+            Retry
+          </button>
+        )}
+      </div>
+    );
   };
 
   if (loading) {
@@ -512,17 +681,8 @@ const OrderDetail = () => {
         </div>
 
         <div className="flex items-center space-x-4">
-          {/* Connection Status Indicator */}
-          <div className="flex items-center space-x-2">
-            <div
-              className={`w-2 h-2 rounded-full ${
-                isConnected ? "bg-green-500" : "bg-red-500"
-              }`}
-            />
-            <span className="text-xs text-gray-500">
-              {isConnected ? "Live updates active" : "Offline"}
-            </span>
-          </div>
+          {/* Enhanced Connection Status Indicator */}
+          {renderConnectionStatus()}
 
           <div className="flex space-x-3">
             <Button variant="outline" onClick={() => navigate("/orders")}>
@@ -616,11 +776,11 @@ const OrderDetail = () => {
                 const isSubmitting =
                   stage === ORDER_STAGES.SUBMITTED && user.role === "baker";
                 const missingImages = isSubmitting
-                  ? order.items.filter(
+                  ? order?.items?.filter(
                       (item) =>
                         !item.inspirationImages ||
                         item.inspirationImages.length === 0
-                    )
+                    ) || []
                   : [];
                 const canSubmit = !isSubmitting || missingImages.length === 0;
 
@@ -663,13 +823,13 @@ const OrderDetail = () => {
 
             {/* Show warning if trying to submit without images */}
             {user.role === "baker" &&
-              order.stage === ORDER_STAGES.DRAFT &&
+              order?.stage === ORDER_STAGES.DRAFT &&
               (() => {
-                const itemsWithoutImages = order.items.filter(
+                const itemsWithoutImages = order?.items?.filter(
                   (item) =>
                     !item.inspirationImages ||
                     item.inspirationImages.length === 0
-                );
+                ) || [];
                 return (
                   itemsWithoutImages.length > 0 && (
                     <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
@@ -689,7 +849,7 @@ const OrderDetail = () => {
                             <p className="mt-1">
                               <strong>Items missing images:</strong>{" "}
                               {itemsWithoutImages.length} of{" "}
-                              {order.items.length}
+                              {order?.items?.length || 0}
                             </p>
                           </div>
                         </div>
@@ -790,7 +950,7 @@ const OrderDetail = () => {
                 Total Items:
               </span>
               <span className="text-sm text-gray-900">
-                {order.items.length}
+                {order?.items?.length || 0}
               </span>
             </div>
 
@@ -851,10 +1011,28 @@ const OrderDetail = () => {
       <div className="bg-white shadow rounded-lg p-6">
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-lg font-medium text-gray-900">Order Items</h3>
+          
+          {/* Add Item Button for Bakers in Draft Stage */}
+          {canAddItems() && (
+            <Button
+              variant="primary"
+              size="small"
+              onClick={() =>
+                setAddItemModal({
+                  isOpen: true,
+                  type: ITEM_TYPES.CUTTER,
+                  additionalComments: "",
+                })
+              }
+            >
+              Add Item
+            </Button>
+          )}
         </div>
 
         <div className="space-y-6">
-          {order.items.map((item, index) => (
+          {order?.items && order.items.length > 0 ? (
+            order.items.map((item, index) => (
             <div
               key={item._id}
               className="border border-gray-200 rounded-lg p-4"
@@ -1095,7 +1273,12 @@ const OrderDetail = () => {
                 </>
               )}
             </div>
-          ))}
+            ))
+          ) : (
+            <div className="text-center py-8">
+              <p className="text-gray-500">No items in this order.</p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1262,7 +1445,92 @@ const OrderDetail = () => {
         </div>
       </Modal>
 
-      {/* Image View Modal */}
+      {/* Add Item Modal */}
+      <Modal
+        isOpen={addItemModal.isOpen}
+        onClose={() =>
+          setAddItemModal({
+            isOpen: false,
+            type: ITEM_TYPES.CUTTER,
+            additionalComments: "",
+          })
+        }
+        title="Add New Item"
+        size="medium"
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Item Type *
+            </label>
+            <select
+              value={addItemModal.type}
+              onChange={(e) =>
+                setAddItemModal((prev) => ({ ...prev, type: e.target.value }))
+              }
+              className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {Object.values(ITEM_TYPES).map((type) => (
+                <option key={type} value={type}>
+                  {type}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Additional Comments
+            </label>
+            <textarea
+              value={addItemModal.additionalComments}
+              onChange={(e) =>
+                setAddItemModal((prev) => ({
+                  ...prev,
+                  additionalComments: e.target.value,
+                }))
+              }
+              placeholder="Describe your requirements, size, special features..."
+              rows={3}
+              maxLength={1000}
+              className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <div className="text-xs text-gray-500 mt-1">
+              {addItemModal.additionalComments.length}/1000 characters
+            </div>
+          </div>
+
+          <div className="bg-blue-50 p-4 rounded-md">
+            <p className="text-sm text-blue-700">
+              <strong>📸 Note:</strong> After adding the item, you'll be able to
+              upload inspiration images to help us understand your vision.
+            </p>
+          </div>
+
+          <div className="flex space-x-3 justify-end">
+            <Button
+              variant="outline"
+              onClick={() =>
+                setAddItemModal({
+                  isOpen: false,
+                  type: ITEM_TYPES.CUTTER,
+                  additionalComments: "",
+                })
+              }
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleAddItem}
+              loading={actionLoading}
+              disabled={actionLoading}
+            >
+              Add Item
+            </Button>
+          </div>
+        </div>
+      </Modal>
       <Modal
         isOpen={imageModal.isOpen}
         onClose={() =>

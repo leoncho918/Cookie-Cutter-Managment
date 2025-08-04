@@ -1,8 +1,9 @@
-// src/components/Orders/Orders.js - Main orders list component
+// src/components/Orders/Orders.js - Enhanced Orders list with real-time updates
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
+import { useSocket } from "../../contexts/SocketContext";
 import {
   ORDER_STAGES,
   getStageColor,
@@ -15,7 +16,10 @@ import axios from "axios";
 
 const Orders = () => {
   const { user } = useAuth();
-  const { showError, showSuccess } = useToast();
+  const { showError, showSuccess, showInfo } = useToast();
+
+  // Enhanced Socket.IO integration
+  const { isConnected, socket, subscribeToOrderUpdates } = useSocket();
 
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -34,6 +38,120 @@ const Orders = () => {
     loadOrders();
   }, [filters]);
 
+  // Enhanced real-time updates for orders list
+  useEffect(() => {
+    if (!isConnected || !socket) return;
+
+    console.log("🔌 Setting up enhanced socket listeners for orders list");
+
+    // Subscribe to general order updates
+    const unsubscribeOrder = subscribeToOrderUpdates((updateData) => {
+      console.log("📡 Orders list received update:", updateData);
+
+      const { eventType, updatedBy, order: updatedOrder } = updateData;
+
+      // Show notifications for updates from other users
+      if (updatedBy.email !== user.email) {
+        let message = "";
+        switch (eventType) {
+          case "created":
+            message = `New order ${updatedOrder.orderNumber} created by ${updatedBy.email}`;
+            break;
+          case "stage_changed":
+            message = `Order ${updatedOrder.orderNumber} moved to ${updatedOrder.stage}`;
+            break;
+          case "deleted":
+            message = `Order ${
+              updatedOrder.orderNumber || "deleted"
+            } was deleted`;
+            break;
+          default:
+            message = `Order ${updatedOrder.orderNumber} ${eventType.replace(
+              "_",
+              " "
+            )}`;
+        }
+        showInfo(message);
+      }
+
+      // Refresh the orders list
+      loadOrders();
+    });
+
+    // Listen for specific order list events
+    const handleOrderListUpdate = (data) => {
+      console.log("📋 Order list update received:", data);
+      loadOrders();
+    };
+
+    const handleNewOrderNotification = (data) => {
+      if (user.role === "admin" && data.createdBy.email !== user.email) {
+        console.log("🆕 New order notification for admin:", data);
+        showSuccess(
+          `New order ${data.orderNumber} created by ${data.bakerEmail}`
+        );
+        loadOrders();
+      }
+    };
+
+    const handleOrderDeleted = (data) => {
+      console.log("🗑️ Order deleted notification:", data);
+      if (data.deletedBy.email !== user.email) {
+        showInfo(
+          `Order ${data.orderNumber} was deleted by ${data.deletedBy.email}`
+        );
+      }
+      loadOrders();
+    };
+
+    const handleOrderCreated = (data) => {
+      console.log("🆕 Order created notification:", data);
+      if (data.updatedBy.email !== user.email) {
+        const { order } = data;
+        showInfo(
+          `New order ${order.orderNumber} created by ${data.updatedBy.email}`
+        );
+      }
+      loadOrders();
+    };
+
+    const handleDashboardUpdate = (data) => {
+      console.log("📊 Dashboard update received:", data);
+      // This can be used to update statistics in real-time
+    };
+
+    // Set up Socket.IO event listeners
+    if (socket) {
+      socket.on("order-list-update", handleOrderListUpdate);
+      socket.on("new-order-notification", handleNewOrderNotification);
+      socket.on("order-deleted", handleOrderDeleted);
+      socket.on("order-created", handleOrderCreated);
+      socket.on("dashboard-update", handleDashboardUpdate);
+    }
+
+    return () => {
+      console.log("🔌 Cleaning up orders list socket listeners");
+
+      if (unsubscribeOrder) unsubscribeOrder();
+
+      if (socket) {
+        socket.off("order-list-update", handleOrderListUpdate);
+        socket.off("new-order-notification", handleNewOrderNotification);
+        socket.off("order-deleted", handleOrderDeleted);
+        socket.off("order-created", handleOrderCreated);
+        socket.off("dashboard-update", handleDashboardUpdate);
+      }
+    };
+  }, [
+    isConnected,
+    socket,
+    subscribeToOrderUpdates,
+    user.email,
+    user.role,
+    showInfo,
+    showSuccess,
+  ]);
+
   const loadOrders = async () => {
     try {
       setLoading(true);
@@ -43,10 +161,12 @@ const Orders = () => {
         if (value) params.append(key, value);
       });
 
+      console.log("🔄 Loading orders with filters:", filters);
       const response = await axios.get(`/orders?${params.toString()}`);
+      console.log("✅ Orders loaded:", response.data.length);
       setOrders(response.data);
     } catch (error) {
-      console.error("Error loading orders:", error);
+      console.error("❌ Error loading orders:", error);
       showError("Failed to load orders");
     } finally {
       setLoading(false);
@@ -84,6 +204,22 @@ const Orders = () => {
     return false;
   };
 
+  // Connection status indicator
+  const renderConnectionStatus = () => {
+    return (
+      <div className="flex items-center space-x-2 text-xs">
+        <div
+          className={`w-2 h-2 rounded-full ${
+            isConnected ? "bg-green-500 animate-pulse" : "bg-red-500"
+          }`}
+        />
+        <span className="text-gray-500">
+          {isConnected ? "Live updates active" : "Offline"}
+        </span>
+      </div>
+    );
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -100,11 +236,14 @@ const Orders = () => {
           <h1 className="text-2xl font-bold text-gray-900">
             {user.role === "admin" ? "All Orders" : "My Orders"}
           </h1>
-          <p className="text-gray-600 mt-1">
-            {user.role === "admin"
-              ? "Manage all orders in the system"
-              : "View and manage your cookie cutter orders"}
-          </p>
+          <div className="flex items-center space-x-4 mt-1">
+            <p className="text-gray-600">
+              {user.role === "admin"
+                ? "Manage all orders in the system"
+                : "View and manage your cookie cutter orders"}
+            </p>
+            {renderConnectionStatus()}
+          </div>
         </div>
 
         {user.role === "baker" && (
@@ -190,6 +329,9 @@ const Orders = () => {
           >
             Clear Filters
           </Button>
+          <Button variant="outline" onClick={loadOrders}>
+            Refresh
+          </Button>
         </div>
       </div>
 
@@ -249,7 +391,10 @@ const Orders = () => {
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {orders.map((order) => (
-                  <tr key={order._id} className="hover:bg-gray-50">
+                  <tr
+                    key={order._id}
+                    className="hover:bg-gray-50 transition-colors"
+                  >
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div>
                         <div className="text-sm font-medium text-gray-900">
@@ -303,7 +448,7 @@ const Orders = () => {
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
                       <Link
                         to={`/orders/${order._id}`}
-                        className="text-blue-600 hover:text-blue-900"
+                        className="text-blue-600 hover:text-blue-900 transition-colors"
                       >
                         View
                       </Link>
@@ -313,7 +458,7 @@ const Orders = () => {
                           onClick={() =>
                             setDeleteModal({ isOpen: true, orderId: order._id })
                           }
-                          className="text-red-600 hover:text-red-900 ml-2"
+                          className="text-red-600 hover:text-red-900 ml-2 transition-colors"
                         >
                           Delete
                         </button>

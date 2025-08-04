@@ -1,8 +1,9 @@
-// routes/orders.js - Order management routes
+// routes/orders.js - Complete orders routes with Socket.IO real-time updates
 const express = require("express");
 const Order = require("../models/Order");
 const { requireAdmin, requireBakerOrAdmin } = require("../middleware/auth");
 const { sendOrderStageChangeEmail } = require("../utils/email");
+const { emitOrderUpdate } = require("../utils/socketUtils");
 
 const router = express.Router();
 
@@ -124,6 +125,26 @@ router.post("/", async (req, res) => {
 
     await order.save();
 
+    console.log("📋 Order created:", {
+      orderId: order._id,
+      orderNumber: order.orderNumber,
+      bakerId: order.bakerId,
+      itemCount: order.items.length,
+    });
+
+    // Emit real-time update
+    const io = req.app.get("io");
+    if (io) {
+      emitOrderUpdate(
+        io,
+        order._id,
+        order,
+        "created",
+        req.user._id,
+        req.user.email
+      );
+    }
+
     res.status(201).json({
       message: "Order created successfully",
       order,
@@ -155,6 +176,12 @@ router.put("/:id", requireBakerOrAdmin, async (req, res) => {
 
     const { dateRequired, items, additionalComments } = req.body;
 
+    // Store original values for comparison
+    const originalOrder = {
+      dateRequired: order.dateRequired,
+      itemsCount: order.items.length,
+    };
+
     // Update allowed fields
     if (dateRequired) order.dateRequired = new Date(dateRequired);
     if (items) order.items = items;
@@ -162,6 +189,30 @@ router.put("/:id", requireBakerOrAdmin, async (req, res) => {
       order.additionalComments = additionalComments;
 
     await order.save();
+
+    console.log("📋 Order updated:", {
+      orderId: order._id,
+      orderNumber: order.orderNumber,
+      updatedBy: req.user.email,
+      changes: {
+        dateChanged:
+          originalOrder.dateRequired.getTime() !== order.dateRequired.getTime(),
+        itemsChanged: originalOrder.itemsCount !== order.items.length,
+      },
+    });
+
+    // Emit real-time update
+    const io = req.app.get("io");
+    if (io) {
+      emitOrderUpdate(
+        io,
+        order._id,
+        order,
+        "updated",
+        req.user._id,
+        req.user.email
+      );
+    }
 
     res.json({
       message: "Order updated successfully",
@@ -267,6 +318,15 @@ router.put("/:id/stage", requireBakerOrAdmin, async (req, res) => {
 
     await order.save();
 
+    console.log("📋 Order stage changed:", {
+      orderId: order._id,
+      orderNumber: order.orderNumber,
+      fromStage: currentStage,
+      toStage: stage,
+      changedBy: req.user.email,
+      price: order.price,
+    });
+
     // Send email notification to baker (only when stage actually changes)
     if (currentStage !== stage) {
       await sendOrderStageChangeEmail(
@@ -274,6 +334,19 @@ router.put("/:id/stage", requireBakerOrAdmin, async (req, res) => {
         order.orderNumber,
         stage,
         comments
+      );
+    }
+
+    // Emit real-time update
+    const io = req.app.get("io");
+    if (io) {
+      emitOrderUpdate(
+        io,
+        order._id,
+        order,
+        "stage_changed",
+        req.user._id,
+        req.user.email
       );
     }
 
@@ -316,14 +389,36 @@ router.post("/:id/items", async (req, res) => {
       return res.status(400).json({ message: "Valid item type is required" });
     }
 
-    order.items.push({
+    const newItem = {
       type,
       additionalComments: additionalComments || "",
       inspirationImages: [],
       previewImages: [],
+    };
+
+    order.items.push(newItem);
+    await order.save();
+
+    console.log("📋 Item added to order:", {
+      orderId: order._id,
+      orderNumber: order.orderNumber,
+      itemType: type,
+      totalItems: order.items.length,
+      addedBy: req.user.email,
     });
 
-    await order.save();
+    // Emit real-time update
+    const io = req.app.get("io");
+    if (io) {
+      emitOrderUpdate(
+        io,
+        order._id,
+        order,
+        "item_added",
+        req.user._id,
+        req.user.email
+      );
+    }
 
     res.json({
       message: "Item added successfully",
@@ -363,6 +458,12 @@ router.put("/:id/items/:itemId", requireBakerOrAdmin, async (req, res) => {
 
     const { type, additionalComments } = req.body;
 
+    // Store original values for logging
+    const originalItem = {
+      type: item.type,
+      comments: item.additionalComments,
+    };
+
     if (type) {
       if (!["Cutter", "Stamp", "Stamp & Cutter"].includes(type)) {
         return res.status(400).json({ message: "Invalid item type" });
@@ -375,6 +476,30 @@ router.put("/:id/items/:itemId", requireBakerOrAdmin, async (req, res) => {
     }
 
     await order.save();
+
+    console.log("📋 Item updated in order:", {
+      orderId: order._id,
+      orderNumber: order.orderNumber,
+      itemId: req.params.itemId,
+      updatedBy: req.user.email,
+      changes: {
+        typeChanged: originalItem.type !== item.type,
+        commentsChanged: originalItem.comments !== item.additionalComments,
+      },
+    });
+
+    // Emit real-time update
+    const io = req.app.get("io");
+    if (io) {
+      emitOrderUpdate(
+        io,
+        order._id,
+        order,
+        "item_updated",
+        req.user._id,
+        req.user.email
+      );
+    }
 
     res.json({
       message: "Item updated successfully",
@@ -412,10 +537,41 @@ router.delete("/:id/items/:itemId", requireBakerOrAdmin, async (req, res) => {
       return res.status(404).json({ message: "Item not found" });
     }
 
+    // Store item info for logging
+    const deletedItemInfo = {
+      type: item.type,
+      comments: item.additionalComments,
+      inspirationImagesCount: item.inspirationImages?.length || 0,
+      previewImagesCount: item.previewImages?.length || 0,
+    };
+
     // TODO: Delete associated images from S3 before removing item
+    // This would require implementing image cleanup functionality
 
     order.items.pull(req.params.itemId);
     await order.save();
+
+    console.log("📋 Item deleted from order:", {
+      orderId: order._id,
+      orderNumber: order.orderNumber,
+      itemId: req.params.itemId,
+      deletedBy: req.user.email,
+      deletedItem: deletedItemInfo,
+      remainingItems: order.items.length,
+    });
+
+    // Emit real-time update
+    const io = req.app.get("io");
+    if (io) {
+      emitOrderUpdate(
+        io,
+        order._id,
+        order,
+        "item_deleted",
+        req.user._id,
+        req.user.email
+      );
+    }
 
     res.json({
       message: "Item deleted successfully",
@@ -448,11 +604,57 @@ router.delete("/:id", requireBakerOrAdmin, async (req, res) => {
       }
     }
 
+    // Store order info for logging and real-time updates
+    const deletedOrderInfo = {
+      _id: order._id,
+      orderNumber: order.orderNumber,
+      bakerId: order.bakerId,
+      bakerEmail: order.bakerEmail,
+      stage: order.stage,
+      itemsCount: order.items.length,
+      createdAt: order.createdAt,
+    };
+
+    console.log("📋 Order deletion initiated:", {
+      orderId: order._id,
+      orderNumber: order.orderNumber,
+      deletedBy: req.user.email,
+      userRole: req.user.role,
+      orderStage: order.stage,
+      itemsCount: order.items.length,
+    });
+
     // TODO: Delete all associated images from S3 before deleting order
+    // This would require implementing bulk image cleanup functionality
 
     await Order.findByIdAndDelete(req.params.id);
 
-    res.json({ message: "Order deleted successfully" });
+    console.log("✅ Order deleted successfully:", {
+      orderId: deletedOrderInfo._id,
+      orderNumber: deletedOrderInfo.orderNumber,
+      deletedBy: req.user.email,
+    });
+
+    // Emit real-time update BEFORE sending response
+    const io = req.app.get("io");
+    if (io) {
+      emitOrderUpdate(
+        io,
+        deletedOrderInfo._id,
+        deletedOrderInfo,
+        "deleted",
+        req.user._id,
+        req.user.email
+      );
+    }
+
+    res.json({
+      message: "Order deleted successfully",
+      deletedOrder: {
+        _id: deletedOrderInfo._id,
+        orderNumber: deletedOrderInfo.orderNumber,
+      },
+    });
   } catch (error) {
     console.error("Error deleting order:", error);
     res.status(500).json({ message: "Server error deleting order" });
@@ -497,9 +699,38 @@ router.put("/:id/completion", async (req, res) => {
         .json({ message: "Valid payment method is required" });
     }
 
+    // Store original values for logging
+    const originalCompletion = {
+      deliveryMethod: order.deliveryMethod,
+      paymentMethod: order.paymentMethod,
+    };
+
     order.deliveryMethod = deliveryMethod;
     order.paymentMethod = paymentMethod;
     await order.save();
+
+    console.log("📋 Order completion details updated:", {
+      orderId: order._id,
+      orderNumber: order.orderNumber,
+      updatedBy: req.user.email,
+      changes: {
+        deliveryMethod: `${originalCompletion.deliveryMethod} → ${deliveryMethod}`,
+        paymentMethod: `${originalCompletion.paymentMethod} → ${paymentMethod}`,
+      },
+    });
+
+    // Emit real-time update
+    const io = req.app.get("io");
+    if (io) {
+      emitOrderUpdate(
+        io,
+        order._id,
+        order,
+        "completion_updated",
+        req.user._id,
+        req.user.email
+      );
+    }
 
     res.json({
       message: "Completion details updated successfully",

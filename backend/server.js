@@ -79,6 +79,7 @@ io.on("connection", (socket) => {
     userId: socket.user.id,
     email: socket.user.email,
     role: socket.user.role,
+    bakerId: socket.user.bakerId,
   });
 
   // Store user info
@@ -93,19 +94,27 @@ io.on("connection", (socket) => {
   // Join user to their role-based room
   const userRoom = `${socket.user.role}s`; // 'bakers' or 'admins'
   socket.join(userRoom);
+  console.log(`👥 User joined role room: ${userRoom}`);
 
   // Join baker to their specific room
   if (socket.user.role === "baker") {
     socket.join(`baker-${socket.user.bakerId}`);
+    console.log(`👤 Baker joined specific room: baker-${socket.user.bakerId}`);
   }
 
   // Join admin to all rooms for monitoring
   if (socket.user.role === "admin") {
     socket.join("admins");
     socket.join("bakers"); // Admins can see baker activities
+    socket.join("all-orders"); // Admins see all order activities
+    console.log("👑 Admin joined monitoring rooms: admins, bakers, all-orders");
   }
 
-  console.log("👥 User joined rooms:", Array.from(socket.rooms));
+  // Join general rooms for order list updates
+  socket.join("orders-list");
+  socket.join("dashboard-updates");
+
+  console.log("👥 User joined all rooms:", Array.from(socket.rooms));
 
   // Send connection confirmation
   socket.emit("connection-status", {
