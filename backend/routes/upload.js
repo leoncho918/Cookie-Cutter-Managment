@@ -1,4 +1,4 @@
-// routes/upload.js - Updated with correct delete permissions
+// routes/upload.js - Complete file with enhanced image processing and fixed delete functionality
 const express = require("express");
 const multer = require("multer");
 const sharp = require("sharp");
@@ -69,54 +69,166 @@ s3.headBucket({ Bucket: BUCKET_NAME }, (err, data) => {
   }
 });
 
-// Configure multer for memory storage
+// Configure multer for memory storage with enhanced file filtering
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
     fileSize: 10 * 1024 * 1024, // 10MB limit
   },
   fileFilter: (req, file, cb) => {
-    // Check file type
-    if (file.mimetype.startsWith("image/")) {
+    console.log("📁 File upload attempt:", {
+      originalname: file.originalname,
+      mimetype: file.mimetype,
+      size: file.size,
+    });
+
+    // Check file type - accept common image formats
+    const allowedMimeTypes = [
+      "image/jpeg",
+      "image/jpg",
+      "image/png",
+      "image/gif",
+      "image/webp",
+      "image/bmp",
+      "image/tiff",
+    ];
+
+    if (allowedMimeTypes.includes(file.mimetype.toLowerCase())) {
+      console.log("✅ File type accepted:", file.mimetype);
       cb(null, true);
     } else {
-      cb(new Error("Only image files are allowed"), false);
+      console.log("❌ File type rejected:", file.mimetype);
+      cb(
+        new Error(
+          `Unsupported file type: ${
+            file.mimetype
+          }. Allowed types: ${allowedMimeTypes.join(", ")}`
+        ),
+        false
+      );
     }
   },
 });
 
-// Image compression function
-const compressImage = async (buffer, quality = 80) => {
+// Enhanced image compression function with transparency handling
+const compressImage = async (buffer, quality = 80, preserveFormat = false) => {
   try {
-    return await sharp(buffer)
-      .resize(1920, 1920, {
-        fit: "inside",
-        withoutEnlargement: true,
-      })
-      .jpeg({ quality })
-      .toBuffer();
+    // Create a sharp instance from the buffer
+    const image = sharp(buffer);
+    const metadata = await image.metadata();
+
+    console.log("📸 Processing image:", {
+      format: metadata.format,
+      hasAlpha: metadata.hasAlpha,
+      channels: metadata.channels,
+      width: metadata.width,
+      height: metadata.height,
+      preserveFormat,
+    });
+
+    let processedImage = image.resize(1920, 1920, {
+      fit: "inside",
+      withoutEnlargement: true,
+    });
+
+    let result;
+
+    // Decide output format based on input and preferences
+    if (preserveFormat && metadata.format === "png" && metadata.hasAlpha) {
+      // Preserve PNG format for transparency
+      console.log("🖼️ Preserving PNG format with transparency");
+      result = await processedImage
+        .png({
+          quality: quality,
+          compressionLevel: 9, // Maximum compression for PNG
+          progressive: true,
+        })
+        .toBuffer();
+    } else if (metadata.hasAlpha || metadata.channels === 4) {
+      // Convert to JPEG with white background for transparent images
+      console.log(
+        "🎨 Converting transparent image to JPEG with white background"
+      );
+      result = await processedImage
+        .flatten({ background: { r: 255, g: 255, b: 255 } })
+        .jpeg({
+          quality,
+          progressive: true,
+          mozjpeg: true,
+        })
+        .toBuffer();
+    } else {
+      // Standard JPEG compression for non-transparent images
+      console.log("📷 Standard JPEG compression");
+      result = await processedImage
+        .jpeg({
+          quality,
+          progressive: true,
+          mozjpeg: true,
+        })
+        .toBuffer();
+    }
+
+    console.log("✅ Image compression completed:", {
+      originalSize: buffer.length,
+      compressedSize: result.length,
+      compressionRatio:
+        ((1 - result.length / buffer.length) * 100).toFixed(1) + "%",
+    });
+
+    return result;
   } catch (error) {
-    console.error("Image compression error:", error);
+    console.error("❌ Image compression error:", error);
+    console.log("⚠️ Falling back to original buffer");
     // Return original buffer if compression fails
     return buffer;
   }
 };
 
-// Upload image to S3
-const uploadToS3 = async (buffer, key, contentType) => {
+// Upload image to S3 with improved content type detection
+const uploadToS3 = async (buffer, key, originalContentType) => {
   console.log("📤 Attempting S3 upload:", {
     bucket: BUCKET_NAME,
     key: key,
     size: buffer.length,
-    contentType: contentType,
+    originalContentType: originalContentType,
   });
+
+  // Detect actual content type of processed buffer
+  let actualContentType = originalContentType;
+  try {
+    const metadata = await sharp(buffer).metadata();
+    if (metadata.format === "jpeg") {
+      actualContentType = "image/jpeg";
+    } else if (metadata.format === "png") {
+      actualContentType = "image/png";
+    } else if (metadata.format === "webp") {
+      actualContentType = "image/webp";
+    }
+    console.log(
+      "🔍 Detected processed image format:",
+      metadata.format,
+      "-> ContentType:",
+      actualContentType
+    );
+  } catch (error) {
+    console.log(
+      "⚠️ Could not detect processed image format, using original:",
+      originalContentType
+    );
+  }
 
   const params = {
     Bucket: BUCKET_NAME,
     Key: key,
     Body: buffer,
-    ContentType: contentType,
+    ContentType: actualContentType,
     ACL: "public-read", // Make images publicly accessible
+    CacheControl: "max-age=31536000", // Cache for 1 year
+    Metadata: {
+      "original-content-type": originalContentType,
+      "processed-at": new Date().toISOString(),
+    },
   };
 
   try {
@@ -395,31 +507,44 @@ router.post(
   }
 );
 
-// Delete inspiration image - Updated permissions
-router.delete(
-  "/inspiration/:orderId/:itemId/:imageKey",
-  requireBakerOrAdmin,
-  async (req, res) => {
-    try {
-      const { orderId, itemId, imageKey } = req.params;
+// New unified delete endpoint using POST with body (avoids URL encoding issues)
+router.post("/delete", requireBakerOrAdmin, async (req, res) => {
+  try {
+    const { orderId, itemId, imageKey, imageType } = req.body;
 
-      console.log("🗑️ Delete inspiration image request:", {
-        orderId,
-        itemId,
-        imageKey,
-        decodedImageKey: decodeURIComponent(imageKey),
-        userRole: req.user.role,
-        userEmail: req.user.email,
+    console.log("🗑️ Delete image request (unified endpoint):", {
+      orderId,
+      itemId,
+      imageKey,
+      imageType,
+      userRole: req.user.role,
+      userEmail: req.user.email,
+    });
+
+    // Validate required fields
+    if (!orderId || !itemId || !imageKey || !imageType) {
+      return res.status(400).json({
+        message: "Missing required fields",
+        required: ["orderId", "itemId", "imageKey", "imageType"],
+        received: { orderId, itemId, imageKey, imageType },
       });
+    }
 
-      // Find order and verify permissions
-      const order = await Order.findById(orderId);
-      if (!order) {
-        console.log("❌ Order not found:", orderId);
-        return res.status(404).json({ message: "Order not found" });
-      }
+    // Validate image type
+    if (!["inspiration", "preview"].includes(imageType)) {
+      return res.status(400).json({ message: "Invalid image type" });
+    }
 
-      // Check permissions: Bakers can delete their own inspiration images, Admins can delete any
+    // Find order and verify permissions
+    const order = await Order.findById(orderId);
+    if (!order) {
+      console.log("❌ Order not found:", orderId);
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    // Check permissions based on image type
+    if (imageType === "inspiration") {
+      // Bakers can delete their own inspiration images, Admins can delete any
       if (req.user.role === "baker") {
         if (order.bakerId !== req.user.bakerId) {
           console.log("❌ Baker access denied - not their order:", {
@@ -431,52 +556,150 @@ router.delete(
             .json({ message: "Access denied to this order" });
         }
       }
-      // Admin can delete any inspiration image, so no additional check needed
+    } else if (imageType === "preview") {
+      // Only admins can delete preview images
+      if (req.user.role !== "admin") {
+        console.log("❌ Non-admin trying to delete preview image");
+        return res
+          .status(403)
+          .json({ message: "Only admins can delete preview images" });
+      }
+    }
+
+    // Find the specific item
+    const item = order.items.id(itemId);
+    if (!item) {
+      console.log("❌ Item not found:", itemId);
+      return res.status(404).json({ message: "Item not found" });
+    }
+
+    // Get the correct image array
+    const imageArray =
+      imageType === "inspiration" ? item.inspirationImages : item.previewImages;
+
+    console.log("🔍 Looking for image with key:", {
+      imageKey,
+      arrayLength: imageArray.length,
+      availableKeys: imageArray.map((img) => img.key),
+    });
+
+    // Find and remove the image
+    const imageIndex = imageArray.findIndex((img) => img.key === imageKey);
+
+    if (imageIndex === -1) {
+      console.log("❌ Image not found with key:", {
+        searchedFor: imageKey,
+        availableImages: imageArray.map((img, idx) => ({
+          index: idx,
+          key: img.key,
+          url: img.url,
+        })),
+      });
+      return res.status(404).json({
+        message: "Image not found",
+        searchedKey: imageKey,
+        availableKeys: imageArray.map((img) => img.key),
+      });
+    }
+
+    const image = imageArray[imageIndex];
+
+    console.log("🗑️ Found image to delete:", {
+      index: imageIndex,
+      key: image.key,
+      url: image.url,
+    });
+
+    // Delete from S3
+    const s3DeleteSuccess = await deleteFromS3(image.key);
+    if (!s3DeleteSuccess) {
+      console.log("⚠️ S3 deletion failed but continuing with database cleanup");
+    }
+
+    // Remove from database
+    imageArray.splice(imageIndex, 1);
+    await order.save();
+
+    console.log(
+      "✅ Image deleted successfully by:",
+      req.user.role,
+      req.user.email
+    );
+
+    res.json({
+      message: `${imageType} image deleted successfully`,
+      deletedImage: {
+        key: image.key,
+        s3DeleteSuccess,
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error deleting image:", error);
+    res.status(500).json({
+      message: "Server error deleting image",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+});
+
+// Legacy DELETE routes for backward compatibility - Fixed
+router.delete(
+  "/inspiration/:orderId/:itemId/:imageKey",
+  requireBakerOrAdmin,
+  async (req, res) => {
+    try {
+      const { orderId, itemId, imageKey } = req.params;
+
+      console.log("🔄 Legacy DELETE route - redirecting to unified handler:", {
+        orderId,
+        itemId,
+        imageKey: decodeURIComponent(imageKey),
+        imageType: "inspiration",
+      });
+
+      // Create the request body for the unified handler
+      const deleteRequest = {
+        orderId,
+        itemId,
+        imageKey: decodeURIComponent(imageKey),
+        imageType: "inspiration",
+      };
+
+      // Find order and verify permissions
+      const order = await Order.findById(orderId);
+      if (!order) {
+        return res.status(404).json({ message: "Order not found" });
+      }
+
+      // Check permissions: Bakers can delete their own inspiration images, Admins can delete any
+      if (req.user.role === "baker") {
+        if (order.bakerId !== req.user.bakerId) {
+          return res
+            .status(403)
+            .json({ message: "Access denied to this order" });
+        }
+      }
 
       // Find the specific item
       const item = order.items.id(itemId);
       if (!item) {
-        console.log("❌ Item not found:", itemId);
         return res.status(404).json({ message: "Item not found" });
       }
 
-      // Decode the image key in case it was URL encoded
-      const decodedImageKey = decodeURIComponent(imageKey);
-
-      console.log("🔍 Looking for image with key:", {
-        originalKey: imageKey,
-        decodedKey: decodedImageKey,
-        availableKeys: item.inspirationImages.map((img) => img.key),
-      });
-
-      // Find and remove the image - try both encoded and decoded versions
-      let imageIndex = item.inspirationImages.findIndex(
-        (img) => img.key === imageKey || img.key === decodedImageKey
+      // Find and remove the image
+      const imageIndex = item.inspirationImages.findIndex(
+        (img) => img.key === decodeURIComponent(imageKey)
       );
 
       if (imageIndex === -1) {
-        console.log("❌ Image not found with key:", {
-          searchedFor: [imageKey, decodedImageKey],
-          availableImages: item.inspirationImages.map((img, idx) => ({
-            index: idx,
-            key: img.key,
-            url: img.url,
-          })),
-        });
         return res.status(404).json({
           message: "Image not found",
-          searchedKeys: [imageKey, decodedImageKey],
+          searchedKey: decodeURIComponent(imageKey),
           availableKeys: item.inspirationImages.map((img) => img.key),
         });
       }
 
       const image = item.inspirationImages[imageIndex];
-
-      console.log("🗑️ Found image to delete:", {
-        index: imageIndex,
-        key: image.key,
-        url: image.url,
-      });
 
       // Delete from S3
       const s3DeleteSuccess = await deleteFromS3(image.key);
@@ -490,11 +713,7 @@ router.delete(
       item.inspirationImages.splice(imageIndex, 1);
       await order.save();
 
-      console.log(
-        "✅ Inspiration image deleted successfully by:",
-        req.user.role,
-        req.user.email
-      );
+      console.log("✅ Inspiration image deleted successfully via legacy route");
 
       res.json({
         message: "Inspiration image deleted successfully",
@@ -504,17 +723,12 @@ router.delete(
         },
       });
     } catch (error) {
-      console.error("❌ Error deleting inspiration image:", error);
-      res.status(500).json({
-        message: "Server error deleting image",
-        error:
-          process.env.NODE_ENV === "development" ? error.message : undefined,
-      });
+      console.error("❌ Error in legacy inspiration delete route:", error);
+      res.status(500).json({ message: "Server error deleting image" });
     }
   }
 );
 
-// Delete preview image (Admin only)
 router.delete(
   "/preview/:orderId/:itemId/:imageKey",
   requireBakerOrAdmin,
@@ -522,18 +736,15 @@ router.delete(
     try {
       const { orderId, itemId, imageKey } = req.params;
 
-      console.log("🗑️ Delete preview image request:", {
+      console.log("🔄 Legacy DELETE route - preview:", {
         orderId,
         itemId,
-        imageKey,
-        decodedImageKey: decodeURIComponent(imageKey),
-        userRole: req.user.role,
-        userEmail: req.user.email,
+        imageKey: decodeURIComponent(imageKey),
+        imageType: "preview",
       });
 
       // Only admins can delete preview images
       if (req.user.role !== "admin") {
-        console.log("❌ Non-admin trying to delete preview image");
         return res
           .status(403)
           .json({ message: "Only admins can delete preview images" });
@@ -542,54 +753,29 @@ router.delete(
       // Find order
       const order = await Order.findById(orderId);
       if (!order) {
-        console.log("❌ Order not found:", orderId);
         return res.status(404).json({ message: "Order not found" });
       }
 
       // Find the specific item
       const item = order.items.id(itemId);
       if (!item) {
-        console.log("❌ Item not found:", itemId);
         return res.status(404).json({ message: "Item not found" });
       }
 
-      // Decode the image key in case it was URL encoded
-      const decodedImageKey = decodeURIComponent(imageKey);
-
-      console.log("🔍 Looking for preview image with key:", {
-        originalKey: imageKey,
-        decodedKey: decodedImageKey,
-        availableKeys: item.previewImages.map((img) => img.key),
-      });
-
-      // Find and remove the image - try both encoded and decoded versions
-      let imageIndex = item.previewImages.findIndex(
-        (img) => img.key === imageKey || img.key === decodedImageKey
+      // Find and remove the image
+      const imageIndex = item.previewImages.findIndex(
+        (img) => img.key === decodeURIComponent(imageKey)
       );
 
       if (imageIndex === -1) {
-        console.log("❌ Preview image not found with key:", {
-          searchedFor: [imageKey, decodedImageKey],
-          availableImages: item.previewImages.map((img, idx) => ({
-            index: idx,
-            key: img.key,
-            url: img.url,
-          })),
-        });
         return res.status(404).json({
           message: "Image not found",
-          searchedKeys: [imageKey, decodedImageKey],
+          searchedKey: decodeURIComponent(imageKey),
           availableKeys: item.previewImages.map((img) => img.key),
         });
       }
 
       const image = item.previewImages[imageIndex];
-
-      console.log("🗑️ Found preview image to delete:", {
-        index: imageIndex,
-        key: image.key,
-        url: image.url,
-      });
 
       // Delete from S3
       const s3DeleteSuccess = await deleteFromS3(image.key);
@@ -603,10 +789,7 @@ router.delete(
       item.previewImages.splice(imageIndex, 1);
       await order.save();
 
-      console.log(
-        "✅ Preview image deleted successfully by admin:",
-        req.user.email
-      );
+      console.log("✅ Preview image deleted successfully via legacy route");
 
       res.json({
         message: "Preview image deleted successfully",
@@ -616,12 +799,8 @@ router.delete(
         },
       });
     } catch (error) {
-      console.error("❌ Error deleting preview image:", error);
-      res.status(500).json({
-        message: "Server error deleting image",
-        error:
-          process.env.NODE_ENV === "development" ? error.message : undefined,
-      });
+      console.error("❌ Error in legacy preview delete route:", error);
+      res.status(500).json({ message: "Server error deleting image" });
     }
   }
 );

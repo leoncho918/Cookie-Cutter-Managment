@@ -327,22 +327,27 @@ const OrderDetail = () => {
           imageKey,
           imageType,
           orderId: id,
-          deleteUrl: `/upload/${imageType}/${id}/${itemId}/${encodeURIComponent(
-            imageKey
-          )}`,
         });
 
-        await axios.delete(
-          `/upload/${imageType}/${id}/${itemId}/${encodeURIComponent(imageKey)}`
-        );
+        // Use the new unified delete endpoint
+        const response = await axios.post(`/upload/delete`, {
+          orderId: id,
+          itemId: itemId,
+          imageKey: imageKey,
+          imageType: imageType,
+        });
+
+        console.log("✅ Delete response:", response.data);
         showSuccess("Image deleted successfully");
         loadOrder();
       } catch (error) {
-        console.error("Error deleting image:", error);
-        console.error(
-          "Delete URL attempted:",
-          `/upload/${imageType}/${id}/${itemId}/${encodeURIComponent(imageKey)}`
-        );
+        console.error("❌ Error deleting image:", error);
+        console.error("Delete request details:", {
+          orderId: id,
+          itemId,
+          imageKey,
+          imageType,
+        });
         console.error("Error details:", {
           status: error.response?.status,
           statusText: error.response?.statusText,
