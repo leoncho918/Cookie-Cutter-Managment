@@ -45,6 +45,11 @@ const OrderDetail = () => {
     paymentMethod: "",
   });
   const [uploadingImages, setUploadingImages] = useState({});
+  const [imageModal, setImageModal] = useState({
+    isOpen: false,
+    imageUrl: "",
+    imageTitle: "",
+  });
 
   useEffect(() => {
     if (id) {
@@ -169,25 +174,86 @@ const OrderDetail = () => {
     }
   };
 
-  const handleImageUpload = async (file, itemId, imageType) => {
+  const handleImageUpload = async (files, itemId, imageType) => {
+    if (!files || files.length === 0) return;
+
+    console.log("🔍 Multiple image upload started:", {
+      fileCount: files.length,
+      itemId,
+      imageType,
+      orderId: id,
+      files: Array.from(files).map((f) => f.name),
+    });
+
     try {
       setUploadingImages((prev) => ({
         ...prev,
         [`${itemId}-${imageType}`]: true,
       }));
 
-      const formData = new FormData();
-      formData.append("image", file);
+      let successCount = 0;
+      let failedFiles = [];
 
-      await axios.post(`/upload/${imageType}/${id}/${itemId}`, formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
+      // Upload files sequentially to avoid version conflicts
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        console.log(`📤 Uploading file ${i + 1}/${files.length}: ${file.name}`);
 
-      showSuccess("Image uploaded successfully");
-      loadOrder();
+        try {
+          const formData = new FormData();
+          formData.append("image", file);
+
+          const response = await axios.post(
+            `/upload/${imageType}/${id}/${itemId}`,
+            formData,
+            {
+              headers: { "Content-Type": "multipart/form-data" },
+            }
+          );
+
+          console.log(`✅ Successfully uploaded: ${file.name}`);
+          successCount++;
+
+          // Small delay to prevent overwhelming the server
+          if (i < files.length - 1) {
+            await new Promise((resolve) => setTimeout(resolve, 500));
+          }
+        } catch (fileError) {
+          console.error(`❌ Failed to upload ${file.name}:`, fileError);
+          failedFiles.push(file.name);
+        }
+      }
+
+      console.log(
+        `📊 Upload summary: ${successCount}/${files.length} successful`
+      );
+
+      if (successCount > 0) {
+        if (successCount === files.length) {
+          showSuccess(`All ${files.length} image(s) uploaded successfully!`);
+        } else {
+          showSuccess(
+            `${successCount} of ${files.length} image(s) uploaded successfully`
+          );
+          if (failedFiles.length > 0) {
+            showError(`Failed to upload: ${failedFiles.join(", ")}`);
+          }
+        }
+
+        // Refresh order data to show new images
+        await loadOrder();
+      } else {
+        showError(
+          `Failed to upload any images. ${
+            failedFiles.length > 0
+              ? `Failed files: ${failedFiles.join(", ")}`
+              : ""
+          }`
+        );
+      }
     } catch (error) {
-      console.error("Error uploading image:", error);
-      showError(error.response?.data?.message || "Failed to upload image");
+      console.error("❌ Upload process failed:", error);
+      showError("Failed to start upload process");
     } finally {
       setUploadingImages((prev) => ({
         ...prev,
@@ -656,16 +722,30 @@ const OrderDetail = () => {
                             }}
                             type="file"
                             accept="image/*"
+                            multiple
                             onChange={(e) => {
-                              console.log("File selected:", e.target.files[0]);
-                              if (e.target.files[0]) {
+                              const selectedFiles = e.target.files;
+                              console.log("📁 Files selected:", {
+                                count: selectedFiles ? selectedFiles.length : 0,
+                                files: selectedFiles
+                                  ? Array.from(selectedFiles).map((f) => ({
+                                      name: f.name,
+                                      size: f.size,
+                                      type: f.type,
+                                    }))
+                                  : [],
+                              });
+
+                              if (selectedFiles && selectedFiles.length > 0) {
                                 handleImageUpload(
-                                  e.target.files[0],
+                                  selectedFiles,
                                   item._id,
                                   "inspiration"
                                 );
-                                // Reset input so same file can be selected again
+                                // Reset input so same files can be selected again
                                 e.target.value = "";
+                              } else {
+                                console.log("❌ No files selected");
                               }
                             }}
                             style={{ display: "none" }}
@@ -693,7 +773,9 @@ const OrderDetail = () => {
                               uploadingImages[`${item._id}-inspiration`]
                             }
                           >
-                            Upload Image
+                            {uploadingImages[`${item._id}-inspiration`]
+                              ? "Uploading..."
+                              : "Upload Images"}
                           </Button>
                         </div>
                       )}
@@ -703,6 +785,13 @@ const OrderDetail = () => {
                       images={item.inspirationImages}
                       onDelete={(imageKey) =>
                         handleImageDelete(item._id, imageKey, "inspiration")
+                      }
+                      onImageClick={(imageUrl) =>
+                        setImageModal({
+                          isOpen: true,
+                          imageUrl,
+                          imageTitle: `Inspiration Image - Item ${index + 1}`,
+                        })
                       }
                       canDelete={canUploadInspirationImages()}
                     />
@@ -729,19 +818,30 @@ const OrderDetail = () => {
                             }}
                             type="file"
                             accept="image/*"
+                            multiple
                             onChange={(e) => {
-                              console.log(
-                                "Preview file selected:",
-                                e.target.files[0]
-                              );
-                              if (e.target.files[0]) {
+                              const selectedFiles = e.target.files;
+                              console.log("📁 Preview files selected:", {
+                                count: selectedFiles ? selectedFiles.length : 0,
+                                files: selectedFiles
+                                  ? Array.from(selectedFiles).map((f) => ({
+                                      name: f.name,
+                                      size: f.size,
+                                      type: f.type,
+                                    }))
+                                  : [],
+                              });
+
+                              if (selectedFiles && selectedFiles.length > 0) {
                                 handleImageUpload(
-                                  e.target.files[0],
+                                  selectedFiles,
                                   item._id,
                                   "preview"
                                 );
-                                // Reset input so same file can be selected again
+                                // Reset input so same files can be selected again
                                 e.target.value = "";
+                              } else {
+                                console.log("❌ No preview files selected");
                               }
                             }}
                             style={{ display: "none" }}
@@ -767,7 +867,9 @@ const OrderDetail = () => {
                             }}
                             disabled={uploadingImages[`${item._id}-preview`]}
                           >
-                            Upload Preview
+                            {uploadingImages[`${item._id}-preview`]
+                              ? "Uploading..."
+                              : "Upload Previews"}
                           </Button>
                         </div>
                       )}
@@ -777,6 +879,13 @@ const OrderDetail = () => {
                       images={item.previewImages}
                       onDelete={(imageKey) =>
                         handleImageDelete(item._id, imageKey, "preview")
+                      }
+                      onImageClick={(imageUrl) =>
+                        setImageModal({
+                          isOpen: true,
+                          imageUrl,
+                          imageTitle: `Preview Image - Item ${index + 1}`,
+                        })
                       }
                       canDelete={canUploadPreviewImages()}
                     />
@@ -950,6 +1059,32 @@ const OrderDetail = () => {
           </div>
         </div>
       </Modal>
+      {/* Image View Modal */}
+      <Modal
+        isOpen={imageModal.isOpen}
+        onClose={() =>
+          setImageModal({ isOpen: false, imageUrl: "", imageTitle: "" })
+        }
+        title={imageModal.imageTitle}
+        size="xlarge"
+      >
+        <div className="flex justify-center">
+          <img
+            src={imageModal.imageUrl}
+            alt={imageModal.imageTitle}
+            className="max-w-full max-h-96 object-contain rounded-lg"
+            style={{ maxHeight: "70vh" }}
+          />
+        </div>
+        <div className="mt-4 flex justify-center">
+          <Button
+            variant="outline"
+            onClick={() => window.open(imageModal.imageUrl, "_blank")}
+          >
+            Open Full Size
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 };
@@ -1018,7 +1153,7 @@ const EditItemForm = ({ item, onSave, onCancel }) => {
 };
 
 // Image Gallery Component
-const ImageGallery = ({ images, onDelete, canDelete }) => {
+const ImageGallery = ({ images, onDelete, onImageClick, canDelete }) => {
   if (!images || images.length === 0) {
     return (
       <p className="text-sm text-gray-500 italic">No images uploaded yet</p>
@@ -1032,12 +1167,18 @@ const ImageGallery = ({ images, onDelete, canDelete }) => {
           <img
             src={image.url}
             alt={`Image ${index + 1}`}
-            className="w-full h-24 object-cover rounded-lg border border-gray-200"
+            className="w-full h-24 object-cover rounded-lg border border-gray-200 cursor-pointer hover:opacity-80 transition-opacity"
+            onClick={() => onImageClick && onImageClick(image.url)}
+            title="Click to view full size"
           />
           {canDelete && (
             <button
-              onClick={() => onDelete(image.key)}
-              className="absolute top-1 right-1 bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+              onClick={(e) => {
+                e.stopPropagation(); // Prevent triggering image click
+                onDelete(image.key);
+              }}
+              className="absolute top-1 right-1 bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-700"
+              title="Delete image"
             >
               ×
             </button>

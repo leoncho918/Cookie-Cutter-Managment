@@ -236,11 +236,9 @@ router.put("/:id/stage", requireBakerOrAdmin, async (req, res) => {
 
     // Special validations
     if (stage === "Requires Approval" && (!price || price <= 0)) {
-      return res
-        .status(400)
-        .json({
-          message: "Price is required when setting order to Requires Approval",
-        });
+      return res.status(400).json({
+        message: "Price is required when setting order to Requires Approval",
+      });
     }
 
     // Baker-specific validation: Must have inspiration images before submitting
@@ -482,11 +480,9 @@ router.put("/:id/completion", async (req, res) => {
     }
 
     if (order.stage !== "Completed") {
-      return res
-        .status(400)
-        .json({
-          message: "Can only update completion details for completed orders",
-        });
+      return res.status(400).json({
+        message: "Can only update completion details for completed orders",
+      });
     }
 
     if (!deliveryMethod || !["Pickup", "Delivery"].includes(deliveryMethod)) {

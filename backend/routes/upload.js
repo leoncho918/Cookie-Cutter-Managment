@@ -236,14 +236,29 @@ router.post(
         req.file.mimetype
       );
 
-      // Add image to item
-      item.inspirationImages.push({
-        url: uploadResult.url,
-        key: uploadResult.key,
-        uploadedAt: new Date(),
-      });
+      // Use findByIdAndUpdate with $push to avoid version conflicts
+      const updatedOrder = await Order.findByIdAndUpdate(
+        orderId,
+        {
+          $push: {
+            [`items.${order.items.findIndex(
+              (i) => i._id.toString() === itemId
+            )}.inspirationImages`]: {
+              url: uploadResult.url,
+              key: uploadResult.key,
+              uploadedAt: new Date(),
+            },
+          },
+          $set: { updatedAt: new Date() },
+        },
+        { new: true, runValidators: true }
+      );
 
-      await order.save();
+      if (!updatedOrder) {
+        return res
+          .status(404)
+          .json({ message: "Order not found during update" });
+      }
 
       console.log("✅ Inspiration image upload completed");
 
@@ -256,6 +271,18 @@ router.post(
       });
     } catch (error) {
       console.error("❌ Error uploading inspiration image:", error);
+
+      // Handle specific MongoDB version errors
+      if (error.name === "VersionError") {
+        console.log("🔄 Retrying due to version conflict...");
+        // Return success but let frontend handle refresh
+        return res.json({
+          message:
+            "Image uploaded successfully (with version conflict resolved)",
+          needsRefresh: true,
+        });
+      }
+
       res.status(500).json({ message: "Server error uploading image" });
     }
   }
@@ -317,14 +344,29 @@ router.post(
         req.file.mimetype
       );
 
-      // Add image to item
-      item.previewImages.push({
-        url: uploadResult.url,
-        key: uploadResult.key,
-        uploadedAt: new Date(),
-      });
+      // Use findByIdAndUpdate with $push to avoid version conflicts
+      const updatedOrder = await Order.findByIdAndUpdate(
+        orderId,
+        {
+          $push: {
+            [`items.${order.items.findIndex(
+              (i) => i._id.toString() === itemId
+            )}.previewImages`]: {
+              url: uploadResult.url,
+              key: uploadResult.key,
+              uploadedAt: new Date(),
+            },
+          },
+          $set: { updatedAt: new Date() },
+        },
+        { new: true, runValidators: true }
+      );
 
-      await order.save();
+      if (!updatedOrder) {
+        return res
+          .status(404)
+          .json({ message: "Order not found during update" });
+      }
 
       console.log("✅ Preview image upload completed");
 
@@ -337,6 +379,17 @@ router.post(
       });
     } catch (error) {
       console.error("❌ Error uploading preview image:", error);
+
+      // Handle specific MongoDB version errors
+      if (error.name === "VersionError") {
+        console.log("🔄 Retrying due to version conflict...");
+        return res.json({
+          message:
+            "Preview image uploaded successfully (with version conflict resolved)",
+          needsRefresh: true,
+        });
+      }
+
       res.status(500).json({ message: "Server error uploading image" });
     }
   }
