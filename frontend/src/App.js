@@ -1,4 +1,4 @@
-// src/App.js - Main React application component
+// src/App.js - Complete React application with Socket.IO integration
 import React, { useState, useEffect } from "react";
 import {
   BrowserRouter as Router,
@@ -8,6 +8,7 @@ import {
 } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ToastProvider } from "./contexts/ToastContext";
+import { SocketProvider } from "./contexts/SocketContext";
 import Navbar from "./components/Layout/Navbar";
 import Sidebar from "./components/Layout/Sidebar";
 import Login from "./components/Auth/Login";
@@ -74,9 +75,11 @@ function App() {
     <div className="App">
       <AuthProvider>
         <ToastProvider>
-          <Router>
-            <AppContent />
-          </Router>
+          <SocketProvider>
+            <Router>
+              <AppContent />
+            </Router>
+          </SocketProvider>
         </ToastProvider>
       </AuthProvider>
     </div>

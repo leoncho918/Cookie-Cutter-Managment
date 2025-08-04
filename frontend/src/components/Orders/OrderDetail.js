@@ -1,9 +1,9 @@
-/* Inspiration Images */
-// src/components/Orders/OrderDetail.js - Fixed multiple image upload
+// src/components/Orders/OrderDetail.js - Complete OrderDetail with Socket.IO integration
 import React, { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
+import { useSocket } from "../../contexts/SocketContext";
 import {
   ORDER_STAGES,
   ITEM_TYPES,
@@ -23,8 +23,17 @@ import axios from "axios";
 const OrderDetail = () => {
   const { id } = useParams();
   const { user } = useAuth();
-  const { showError, showSuccess } = useToast();
+  const { showError, showSuccess, showInfo } = useToast();
   const navigate = useNavigate();
+
+  // Socket.IO integration
+  const {
+    isConnected,
+    joinOrderRoom,
+    leaveOrderRoom,
+    subscribeToOrderUpdates,
+    subscribeToImageUpdates,
+  } = useSocket();
 
   // Use ref to track if upload is in progress
   const uploadInProgressRef = useRef(false);
@@ -56,6 +65,87 @@ const OrderDetail = () => {
       loadOrder();
     }
   }, [id]);
+
+  // Join order room for real-time updates
+  useEffect(() => {
+    if (id && isConnected) {
+      joinOrderRoom(id);
+
+      return () => {
+        leaveOrderRoom(id);
+      };
+    }
+  }, [id, isConnected, joinOrderRoom, leaveOrderRoom]);
+
+  // Subscribe to real-time order updates
+  useEffect(() => {
+    if (!isConnected) return;
+
+    const unsubscribeOrder = subscribeToOrderUpdates((updateData) => {
+      console.log("📡 Received order update:", updateData);
+
+      // Only process updates for the current order
+      if (updateData.orderId === id) {
+        const { eventType, updatedBy, order: updatedOrder } = updateData;
+
+        // Don't show notifications for updates made by the current user
+        if (updatedBy.email !== user.email) {
+          const message = `Order ${eventType.replace("_", " ")} by ${
+            updatedBy.email
+          }`;
+          showInfo(message);
+        }
+
+        // Update the order data
+        if (updatedOrder) {
+          setOrder(updatedOrder);
+        } else {
+          // If order was deleted, redirect
+          if (eventType === "deleted") {
+            showInfo("This order has been deleted");
+            navigate("/orders");
+            return;
+          }
+
+          // Otherwise refresh the order data
+          loadOrder();
+        }
+      }
+    });
+
+    const unsubscribeImage = subscribeToImageUpdates((updateData) => {
+      console.log("📡 Received image update:", updateData);
+
+      // Only process updates for the current order
+      if (updateData.orderId === id) {
+        const { eventType, imageType, updatedBy } = updateData;
+
+        // Don't show notifications for updates made by the current user
+        if (updatedBy.email !== user.email) {
+          const action =
+            eventType === "image_uploaded" ? "uploaded" : "deleted";
+          const message = `${imageType} image ${action} by ${updatedBy.email}`;
+          showInfo(message);
+        }
+
+        // Refresh order data to show updated images
+        loadOrder();
+      }
+    });
+
+    return () => {
+      if (unsubscribeOrder) unsubscribeOrder();
+      if (unsubscribeImage) unsubscribeImage();
+    };
+  }, [
+    id,
+    isConnected,
+    subscribeToOrderUpdates,
+    subscribeToImageUpdates,
+    user.email,
+    showInfo,
+    navigate,
+  ]);
 
   const loadOrder = async () => {
     // Don't reload if upload is in progress
@@ -421,16 +511,30 @@ const OrderDetail = () => {
           </p>
         </div>
 
-        <div className="flex space-x-3">
-          <Button variant="outline" onClick={() => navigate("/orders")}>
-            Back to Orders
-          </Button>
+        <div className="flex items-center space-x-4">
+          {/* Connection Status Indicator */}
+          <div className="flex items-center space-x-2">
+            <div
+              className={`w-2 h-2 rounded-full ${
+                isConnected ? "bg-green-500" : "bg-red-500"
+              }`}
+            />
+            <span className="text-xs text-gray-500">
+              {isConnected ? "Live updates active" : "Offline"}
+            </span>
+          </div>
 
-          {canDeleteOrder(order, user) && (
-            <Button variant="danger" onClick={handleOrderDelete}>
-              Delete Order
+          <div className="flex space-x-3">
+            <Button variant="outline" onClick={() => navigate("/orders")}>
+              Back to Orders
             </Button>
-          )}
+
+            {canDeleteOrder(order, user) && (
+              <Button variant="danger" onClick={handleOrderDelete}>
+                Delete Order
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
