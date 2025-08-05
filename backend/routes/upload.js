@@ -1,4 +1,4 @@
-// routes/upload.js - Complete image upload routes with S3 integration
+// routes/upload.js - Complete image upload routes with white background for transparent images
 const express = require("express");
 const multer = require("multer");
 const sharp = require("sharp");
@@ -56,19 +56,65 @@ const deleteFromS3 = async (key) => {
   await s3.deleteObject(params).promise();
 };
 
-// Helper function to process image
+// Enhanced image processing function with white background for transparent images
 const processImage = async (buffer, maxWidth = 1920, quality = 85) => {
   try {
-    return await sharp(buffer)
-      .resize(maxWidth, null, {
+    // Get image metadata to check for transparency
+    const metadata = await sharp(buffer).metadata();
+
+    console.log("📊 Image metadata:", {
+      format: metadata.format,
+      width: metadata.width,
+      height: metadata.height,
+      channels: metadata.channels,
+      hasAlpha: metadata.hasAlpha,
+      space: metadata.space,
+    });
+
+    let sharpInstance = sharp(buffer);
+
+    // If the image has transparency (alpha channel), flatten it with white background
+    if (metadata.hasAlpha) {
+      console.log(
+        "🎨 Image has transparency, flattening with white background"
+      );
+      sharpInstance = sharpInstance.flatten({
+        background: { r: 255, g: 255, b: 255 },
+      });
+    }
+
+    // Resize if necessary
+    if (metadata.width > maxWidth) {
+      console.log(
+        `📏 Resizing image from ${metadata.width}px to ${maxWidth}px max width`
+      );
+      sharpInstance = sharpInstance.resize(maxWidth, null, {
         withoutEnlargement: true,
         fit: "inside",
+      });
+    }
+
+    // Convert to JPEG with specified quality
+    const processedBuffer = await sharpInstance
+      .jpeg({
+        quality: quality,
+        progressive: true,
+        mozjpeg: true, // Use mozjpeg for better compression
       })
-      .jpeg({ quality, progressive: true })
       .toBuffer();
+
+    console.log("✅ Image processed successfully", {
+      originalSize: buffer.length,
+      processedSize: processedBuffer.length,
+      compressionRatio:
+        ((1 - processedBuffer.length / buffer.length) * 100).toFixed(1) + "%",
+    });
+
+    return processedBuffer;
   } catch (error) {
-    console.error("Image processing error:", error);
+    console.error("❌ Image processing error:", error);
     // Return original buffer if processing fails
+    console.log("⚠️ Returning original buffer due to processing error");
     return buffer;
   }
 };
@@ -91,6 +137,7 @@ router.post(
         itemId,
         fileName: req.file.originalname,
         fileSize: req.file.size,
+        mimeType: req.file.mimetype,
         userRole: req.user.role,
         userId: req.user._id,
       });
@@ -112,7 +159,8 @@ router.post(
         return res.status(404).json({ message: "Item not found" });
       }
 
-      // Process image
+      // Process image with white background for transparent images
+      console.log("🔄 Processing image...");
       const processedBuffer = await processImage(req.file.buffer);
 
       // Generate unique key for S3
@@ -120,13 +168,14 @@ router.post(
         .split(".")
         .pop()
         .toLowerCase();
-      const imageKey = `inspiration/${orderId}/${itemId}/${uuidv4()}.${fileExtension}`;
+      const imageKey = `inspiration/${orderId}/${itemId}/${uuidv4()}.jpg`; // Always save as JPG
 
-      // Upload to S3
+      // Upload to S3 with JPEG content type
+      console.log("☁️ Uploading to S3...");
       const imageUrl = await uploadToS3(
         processedBuffer,
         imageKey,
-        req.file.mimetype
+        "image/jpeg" // Always JPEG after processing
       );
 
       // Add image to order item
@@ -144,6 +193,7 @@ router.post(
         imageKey,
         orderId,
         itemId,
+        finalSize: processedBuffer.length,
       });
 
       // Emit real-time update
@@ -164,9 +214,20 @@ router.post(
       res.json({
         message: "Inspiration image uploaded successfully",
         image: imageData,
+        processing: {
+          originalSize: req.file.size,
+          processedSize: processedBuffer.length,
+          compressionRatio:
+            ((1 - processedBuffer.length / req.file.size) * 100).toFixed(1) +
+            "%",
+          transparencyHandled:
+            req.file.mimetype === "image/png"
+              ? "Converted to white background"
+              : "No transparency",
+        },
       });
     } catch (error) {
-      console.error("Error uploading inspiration image:", error);
+      console.error("❌ Error uploading inspiration image:", error);
       res.status(500).json({
         message: "Failed to upload image",
         error:
@@ -198,6 +259,7 @@ router.post(
         itemId,
         fileName: req.file.originalname,
         fileSize: req.file.size,
+        mimeType: req.file.mimetype,
         userRole: req.user.role,
         userId: req.user._id,
       });
@@ -214,7 +276,8 @@ router.post(
         return res.status(404).json({ message: "Item not found" });
       }
 
-      // Process image
+      // Process image with white background for transparent images
+      console.log("🔄 Processing preview image...");
       const processedBuffer = await processImage(req.file.buffer);
 
       // Generate unique key for S3
@@ -222,13 +285,14 @@ router.post(
         .split(".")
         .pop()
         .toLowerCase();
-      const imageKey = `preview/${orderId}/${itemId}/${uuidv4()}.${fileExtension}`;
+      const imageKey = `preview/${orderId}/${itemId}/${uuidv4()}.jpg`; // Always save as JPG
 
-      // Upload to S3
+      // Upload to S3 with JPEG content type
+      console.log("☁️ Uploading preview to S3...");
       const imageUrl = await uploadToS3(
         processedBuffer,
         imageKey,
-        req.file.mimetype
+        "image/jpeg" // Always JPEG after processing
       );
 
       // Add image to order item
@@ -246,6 +310,7 @@ router.post(
         imageKey,
         orderId,
         itemId,
+        finalSize: processedBuffer.length,
       });
 
       // Emit real-time update
@@ -266,9 +331,20 @@ router.post(
       res.json({
         message: "Preview image uploaded successfully",
         image: imageData,
+        processing: {
+          originalSize: req.file.size,
+          processedSize: processedBuffer.length,
+          compressionRatio:
+            ((1 - processedBuffer.length / req.file.size) * 100).toFixed(1) +
+            "%",
+          transparencyHandled:
+            req.file.mimetype === "image/png"
+              ? "Converted to white background"
+              : "No transparency",
+        },
       });
     } catch (error) {
-      console.error("Error uploading preview image:", error);
+      console.error("❌ Error uploading preview image:", error);
       res.status(500).json({
         message: "Failed to upload image",
         error:
@@ -385,7 +461,7 @@ router.post("/delete", requireBakerOrAdmin, async (req, res) => {
       deletedImage: imageToDelete,
     });
   } catch (error) {
-    console.error("Error deleting image:", error);
+    console.error("❌ Error deleting image:", error);
     res.status(500).json({
       message: "Failed to delete image",
       error: process.env.NODE_ENV === "development" ? error.message : undefined,
@@ -421,14 +497,91 @@ router.get("/s3-info", requireBakerOrAdmin, async (req, res) => {
       location: location.LocationConstraint,
       corsConfigured: !!corsConfig,
       corsRules: corsConfig?.CORSRules || [],
+      imageProcessing: {
+        defaultBackground: "white",
+        transparencyHandling: "flatten to white background",
+        outputFormat: "JPEG",
+        defaultQuality: 85,
+        maxWidth: 1920,
+      },
     });
   } catch (error) {
-    console.error("Error getting S3 info:", error);
+    console.error("❌ Error getting S3 info:", error);
     res.status(500).json({
       message: "Failed to get S3 information",
       error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 });
+
+// Test image processing endpoint (development only)
+if (process.env.NODE_ENV === "development") {
+  router.post(
+    "/test-processing",
+    requireBakerOrAdmin,
+    upload.single("image"),
+    async (req, res) => {
+      try {
+        if (!req.file) {
+          return res.status(400).json({ message: "No image file provided" });
+        }
+
+        console.log("🧪 Testing image processing:", {
+          fileName: req.file.originalname,
+          fileSize: req.file.size,
+          mimeType: req.file.mimetype,
+        });
+
+        // Get original metadata
+        const originalMetadata = await sharp(req.file.buffer).metadata();
+
+        // Process image
+        const processedBuffer = await processImage(req.file.buffer);
+
+        // Get processed metadata
+        const processedMetadata = await sharp(processedBuffer).metadata();
+
+        res.json({
+          message: "Image processing test completed",
+          original: {
+            format: originalMetadata.format,
+            width: originalMetadata.width,
+            height: originalMetadata.height,
+            channels: originalMetadata.channels,
+            hasAlpha: originalMetadata.hasAlpha,
+            size: req.file.size,
+            space: originalMetadata.space,
+          },
+          processed: {
+            format: processedMetadata.format,
+            width: processedMetadata.width,
+            height: processedMetadata.height,
+            channels: processedMetadata.channels,
+            hasAlpha: processedMetadata.hasAlpha,
+            size: processedBuffer.length,
+            space: processedMetadata.space,
+          },
+          processing: {
+            transparencyHandled: originalMetadata.hasAlpha
+              ? "Flattened to white background"
+              : "No transparency detected",
+            compressionRatio:
+              ((1 - processedBuffer.length / req.file.size) * 100).toFixed(1) +
+              "%",
+            backgroundApplied: originalMetadata.hasAlpha
+              ? "White (RGB: 255, 255, 255)"
+              : "None",
+          },
+        });
+      } catch (error) {
+        console.error("❌ Error testing image processing:", error);
+        res.status(500).json({
+          message: "Image processing test failed",
+          error: error.message,
+        });
+      }
+    }
+  );
+}
 
 module.exports = router;
