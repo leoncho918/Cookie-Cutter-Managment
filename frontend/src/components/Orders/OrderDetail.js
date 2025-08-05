@@ -426,7 +426,6 @@ const OrderDetail = () => {
         measurement: {
           value: "",
           unit: MEASUREMENT_UNITS.CM,
-          dimension: MEASUREMENT_DIMENSIONS.LENGTH,
         },
         additionalComments: "",
       });
@@ -776,10 +775,9 @@ const OrderDetail = () => {
                     className={`
                                         w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium
                                         ${
-                                          isCurrent
-                                            ? `bg-${getStageColor(
-                                                order.stage
-                                              )}-600 text-white`
+                                          isCurrent &&
+                                          order.stage !== ORDER_STAGES.COMPLETED
+                                            ? `bg-blue-600 text-white`
                                             : isCompleted
                                             ? "bg-green-600 text-white"
                                             : "bg-gray-300 text-gray-600"
@@ -788,22 +786,9 @@ const OrderDetail = () => {
                   >
                     {isCompleted && !isCurrent ? "✓" : index + 1}
                   </div>
-                  <div className="text-xs text-center mt-2 max-w-20">
+                  <div className="text-xs text-center mt-2 max-w-25">
                     {stage}
                   </div>
-
-                  {index < Object.values(ORDER_STAGES).length - 1 && (
-                    <div
-                      className={`
-                                            absolute top-4 left-8 w-16 h-0.5
-                                            ${
-                                              isCompleted
-                                                ? "bg-green-600"
-                                                : "bg-gray-300"
-                                            }
-                                        `}
-                    />
-                  )}
                 </div>
               );
             })}
@@ -1594,31 +1579,6 @@ const OrderDetail = () => {
                 ))}
               </select>
             </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Dimension *
-              </label>
-              <select
-                value={addItemModal.measurement.dimension}
-                onChange={(e) =>
-                  setAddItemModal((prev) => ({
-                    ...prev,
-                    measurement: {
-                      ...prev.measurement,
-                      dimension: e.target.value,
-                    },
-                  }))
-                }
-                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                {Object.values(MEASUREMENT_DIMENSIONS).map((dimension) => (
-                  <option key={dimension} value={dimension}>
-                    {dimension.charAt(0).toUpperCase() + dimension.slice(1)}
-                  </option>
-                ))}
-              </select>
-            </div>
           </div>
 
           {/* Measurement Preview */}
@@ -1672,7 +1632,6 @@ const OrderDetail = () => {
                   measurement: {
                     value: "",
                     unit: MEASUREMENT_UNITS.CM,
-                    dimension: MEASUREMENT_DIMENSIONS.LENGTH,
                   },
                   additionalComments: "",
                 })
@@ -1729,7 +1688,6 @@ const EditItemForm = ({ item, onSave, onCancel }) => {
     measurement: {
       value: item.measurement?.value || "",
       unit: item.measurement?.unit || MEASUREMENT_UNITS.CM,
-      dimension: item.measurement?.dimension || MEASUREMENT_DIMENSIONS.LENGTH,
     },
     additionalComments: item.additionalComments || "",
   });
@@ -1815,31 +1773,6 @@ const EditItemForm = ({ item, onSave, onCancel }) => {
             {Object.values(MEASUREMENT_UNITS).map((unit) => (
               <option key={unit} value={unit}>
                 {unit}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Dimension *
-          </label>
-          <select
-            value={formData.measurement.dimension}
-            onChange={(e) =>
-              setFormData((prev) => ({
-                ...prev,
-                measurement: {
-                  ...prev.measurement,
-                  dimension: e.target.value,
-                },
-              }))
-            }
-            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            {Object.values(MEASUREMENT_DIMENSIONS).map((dimension) => (
-              <option key={dimension} value={dimension}>
-                {dimension.charAt(0).toUpperCase() + dimension.slice(1)}
               </option>
             ))}
           </select>
