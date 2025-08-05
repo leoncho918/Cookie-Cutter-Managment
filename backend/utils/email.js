@@ -23,32 +23,47 @@ const generateRandomPassword = (length = 12) => {
   return password;
 };
 
-// Send account creation email
-const sendAccountCreationEmail = async (email, bakerId, temporaryPassword) => {
+// Enhanced account creation email with personal details
+const sendAccountCreationEmail = async (
+  email,
+  bakerId,
+  temporaryPassword,
+  userDetails = {}
+) => {
   const transporter = createTransporter();
+
+  const { firstName, lastName, phoneNumber } = userDetails;
+  const fullName = firstName && lastName ? `${firstName} ${lastName}` : "Baker";
 
   const mailOptions = {
     from: process.env.EMAIL_USER,
     to: email,
     subject: "Welcome to Cookie Cutter Order Management System",
     html: `
-            <h2>Welcome to Cookie Cutter Order Management!</h2>
-            <p>Your baker account has been created with the following credentials:</p>
-            <ul>
-                <li><strong>Email:</strong> ${email}</li>
-                <li><strong>Baker ID:</strong> ${bakerId}</li>
-                <li><strong>Temporary Password:</strong> ${temporaryPassword}</li>
-            </ul>
-            <p><strong>Important:</strong> You will be required to change your password on first login.</p>
-            <p>Please log in to the system and start managing your orders!</p>
-            <br>
-            <p>Best regards,<br>Cookie Cutter Order Management Team</p>
-        `,
+      <h2>Welcome to Cookie Cutter Orders!</h2>
+      ${firstName ? `<p>Hello ${fullName},</p>` : ""}
+      <p>Your baker account has been created with the following credentials:</p>
+      <ul>
+        ${firstName ? `<li><strong>Name:</strong> ${fullName}</li>` : ""}
+        <li><strong>Email:</strong> ${email}</li>
+        <li><strong>Baker ID:</strong> ${bakerId}</li>
+        ${phoneNumber ? `<li><strong>Phone:</strong> ${phoneNumber}</li>` : ""}
+        <li><strong>Temporary Password:</strong> ${temporaryPassword}</li>
+      </ul>
+      <p><strong>Important:</strong> You will be required to change your password on first login.</p>
+      <p>Please log in to the system and start managing your orders!</p>
+      <br>
+      <p>Best regards,<br>Cookie Cutter Order Management Team</p>
+    `,
   };
 
   try {
     await transporter.sendMail(mailOptions);
-    console.log("Account creation email sent to:", email);
+    console.log("Account creation email sent to:", email, {
+      fullName,
+      bakerId,
+      phoneNumber: phoneNumber || "Not provided",
+    });
     return true;
   } catch (error) {
     console.error("Error sending account creation email:", error);

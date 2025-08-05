@@ -1,13 +1,10 @@
-// create-admin.js - Script to create initial admin user
-// Place this file in your project root directory (same level as backend folder)
-// Run with: node create-admin.js
-
+// create-admin.js - Fixed script to create initial admin user with name and phone
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const readline = require("readline");
-require("dotenv").config({ path: "../backend/.env" });
+require("dotenv").config({ path: ".env" });
 
-// User schema (matches your backend model)
+// Enhanced User schema (matches your backend model)
 const userSchema = new mongoose.Schema({
   email: {
     type: String,
@@ -25,6 +22,29 @@ const userSchema = new mongoose.Schema({
     type: String,
     enum: ["admin", "baker"],
     required: true,
+  },
+  firstName: {
+    type: String,
+    required: true,
+    trim: true,
+    maxlength: 50,
+  },
+  lastName: {
+    type: String,
+    required: true,
+    trim: true,
+    maxlength: 50,
+  },
+  phoneNumber: {
+    type: String,
+    required: true,
+    trim: true,
+    validate: {
+      validator: function (v) {
+        return /^[\+]?[\d\s\-\(\)]{10,15}$/.test(v);
+      },
+      message: "Please enter a valid phone number",
+    },
   },
   bakerId: {
     type: String,
@@ -52,92 +72,61 @@ const userSchema = new mongoose.Schema({
 
 const User = mongoose.model("User", userSchema);
 
-// Global readline interface
-let rl;
-
-// Helper function to create fresh readline interface
-const createReadlineInterface = () => {
-  if (rl) {
-    rl.close();
-  }
-  rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-  return rl;
-};
+// Simple readline interface
+const rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout,
+});
 
 // Helper function to ask questions
 const askQuestion = (question) => {
   return new Promise((resolve) => {
-    const interface = createReadlineInterface();
-    interface.question(question, (answer) => {
+    rl.question(question, (answer) => {
       resolve(answer.trim());
     });
   });
 };
 
-// Simplified password input function
+// Simplified password input - visible for reliability
 const askPassword = (question) => {
-  return new Promise((resolve) => {
-    // Close any existing readline interface
-    if (rl) {
-      rl.close();
-    }
-
-    const stdin = process.stdin;
-    const stdout = process.stdout;
-
-    stdout.write(question);
-    stdin.setRawMode(true);
-    stdin.resume();
-    stdin.setEncoding("utf8");
-
-    let password = "";
-    let isComplete = false;
-
-    const onData = (char) => {
-      if (isComplete) return;
-
-      switch (char) {
-        case "\n":
-        case "\r":
-        case "\u0004": // Ctrl+D
-          isComplete = true;
-          stdin.setRawMode(false);
-          stdin.pause();
-          stdin.removeListener("data", onData);
-          stdout.write("\n");
-          resolve(password);
-          break;
-        case "\u0003": // Ctrl+C
-          process.exit(1);
-          break;
-        case "\u007f": // Backspace
-        case "\b": // Backspace
-          if (password.length > 0) {
-            password = password.slice(0, -1);
-            stdout.write("\b \b");
-          }
-          break;
-        default:
-          if (char.charCodeAt(0) >= 32) {
-            // Printable characters only
-            password += char;
-            stdout.write("*");
-          }
-          break;
-      }
-    };
-
-    stdin.on("data", onData);
-  });
+  console.log("\n⚠️  Note: Password will be visible on screen for reliability");
+  return askQuestion(question);
 };
 
 // Email validation function
 const validateEmail = (email) => {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   return emailRegex.test(email);
+};
+
+// Name validation function
+const validateName = (name, fieldName) => {
+  if (!name || name.trim().length < 2) {
+    return {
+      valid: false,
+      message: `${fieldName} must be at least 2 characters long`,
+    };
+  }
+  if (name.trim().length > 50) {
+    return {
+      valid: false,
+      message: `${fieldName} must be less than 50 characters long`,
+    };
+  }
+  return { valid: true };
+};
+
+// Phone validation function
+const validatePhone = (phoneNumber) => {
+  const phoneRegex = /^[\+]?[\d\s\-\(\)]{10,15}$/;
+  if (!phoneRegex.test(phoneNumber)) {
+    return {
+      valid: false,
+      message:
+        "Phone number must be 10-15 digits and may include +, spaces, dashes, or parentheses",
+    };
+  }
+  return { valid: true };
 };
 
 // Password validation function
@@ -181,7 +170,15 @@ async function createAdminUser() {
     const existingAdmin = await User.findOne({ role: "admin" });
     if (existingAdmin) {
       console.log("⚠️  Warning: An admin user already exists!");
+      if (existingAdmin.firstName && existingAdmin.lastName) {
+        console.log(
+          `   Name: ${existingAdmin.firstName} ${existingAdmin.lastName}`
+        );
+      }
       console.log(`   Email: ${existingAdmin.email}`);
+      if (existingAdmin.phoneNumber) {
+        console.log(`   Phone: ${existingAdmin.phoneNumber}`);
+      }
       console.log(
         `   Created: ${existingAdmin.createdAt.toLocaleDateString()}\n`
       );
@@ -194,13 +191,38 @@ async function createAdminUser() {
         overwrite.toLowerCase() !== "yes"
       ) {
         console.log("Operation cancelled.");
+        rl.close();
         process.exit(0);
       }
       console.log("");
     }
 
     // Get admin details from user
-    let email, password, confirmPassword;
+    let firstName, lastName, email, phoneNumber, password, confirmPassword;
+
+    // Get first name
+    while (true) {
+      firstName = await askQuestion("Enter admin first name: ");
+
+      const firstNameValidation = validateName(firstName, "First name");
+      if (!firstNameValidation.valid) {
+        console.log(`❌ ${firstNameValidation.message}. Please try again.\n`);
+        continue;
+      }
+      break;
+    }
+
+    // Get last name
+    while (true) {
+      lastName = await askQuestion("Enter admin last name: ");
+
+      const lastNameValidation = validateName(lastName, "Last name");
+      if (!lastNameValidation.valid) {
+        console.log(`❌ ${lastNameValidation.message}. Please try again.\n`);
+        continue;
+      }
+      break;
+    }
 
     // Get email
     while (true) {
@@ -224,7 +246,34 @@ async function createAdminUser() {
         );
         continue;
       }
+      break;
+    }
 
+    // Get phone number
+    while (true) {
+      phoneNumber = await askQuestion("Enter admin phone number: ");
+
+      if (!phoneNumber) {
+        console.log("❌ Phone number cannot be empty. Please try again.\n");
+        continue;
+      }
+
+      const phoneValidation = validatePhone(phoneNumber);
+      if (!phoneValidation.valid) {
+        console.log(`❌ ${phoneValidation.message}. Please try again.\n`);
+        continue;
+      }
+
+      // Check if phone number already exists
+      const existingUserWithPhone = await User.findOne({
+        phoneNumber: phoneNumber.trim(),
+      });
+      if (existingUserWithPhone) {
+        console.log(
+          "❌ A user with this phone number already exists. Please use a different phone number.\n"
+        );
+        continue;
+      }
       break;
     }
 
@@ -244,7 +293,6 @@ async function createAdminUser() {
         console.log("❌ Passwords do not match. Please try again.\n");
         continue;
       }
-
       break;
     }
 
@@ -257,7 +305,9 @@ async function createAdminUser() {
       requireFirstLogin.toLowerCase() !== "no";
 
     console.log("\n📋 Admin User Details:");
+    console.log(`   Name: ${firstName} ${lastName}`);
     console.log(`   Email: ${email}`);
+    console.log(`   Phone: ${phoneNumber}`);
     console.log(`   Role: Admin`);
     console.log(`   First Login Required: ${isFirstLogin ? "Yes" : "No"}`);
     console.log("");
@@ -265,6 +315,7 @@ async function createAdminUser() {
     const confirm = await askQuestion("Create this admin user? (Y/n): ");
     if (confirm.toLowerCase() === "n" || confirm.toLowerCase() === "no") {
       console.log("Operation cancelled.");
+      rl.close();
       process.exit(0);
     }
 
@@ -279,6 +330,9 @@ async function createAdminUser() {
       email: email.toLowerCase(),
       password: hashedPassword,
       role: "admin",
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      phoneNumber: phoneNumber.trim(),
       isFirstLogin: isFirstLogin,
       isActive: true,
       createdAt: new Date(),
@@ -289,7 +343,9 @@ async function createAdminUser() {
 
     console.log("\n🎉 Admin user created successfully!");
     console.log("=====================================");
+    console.log(`👤 Name: ${adminUser.firstName} ${adminUser.lastName}`);
     console.log(`📧 Email: ${adminUser.email}`);
+    console.log(`📞 Phone: ${adminUser.phoneNumber}`);
     console.log(`🆔 User ID: ${adminUser._id}`);
     console.log(`👑 Role: ${adminUser.role}`);
     console.log(`📅 Created: ${adminUser.createdAt.toLocaleString()}`);
@@ -301,11 +357,25 @@ async function createAdminUser() {
       "🚀 You can now log in to the application with these credentials!"
     );
     console.log("   URL: http://localhost:3000");
+
+    if (isFirstLogin) {
+      console.log("");
+      console.log(
+        "⚠️  IMPORTANT: You will be prompted to change your password on first login."
+      );
+    }
   } catch (error) {
     console.error("\n❌ Error creating admin user:");
 
     if (error.code === 11000) {
-      console.error("   Email address already exists in the database");
+      const field = Object.keys(error.keyPattern)[0];
+      if (field === "email") {
+        console.error("   Email address already exists in the database");
+      } else if (field === "phoneNumber") {
+        console.error("   Phone number already exists in the database");
+      } else {
+        console.error("   Duplicate value detected:", field);
+      }
     } else if (error.name === "ValidationError") {
       console.error("   Validation error:", error.message);
     } else if (error.name === "MongoNetworkError") {
@@ -320,10 +390,9 @@ async function createAdminUser() {
     console.log("   1. Check that MongoDB is running");
     console.log("   2. Verify MONGODB_URI in backend/.env file");
     console.log("   3. Ensure you have write permissions to the database");
+    console.log("   4. Make sure email and phone number are unique");
   } finally {
-    if (rl) {
-      rl.close();
-    }
+    rl.close();
     if (mongoose.connection.readyState === 1) {
       await mongoose.disconnect();
       console.log("\n🔌 Disconnected from MongoDB");
@@ -332,12 +401,106 @@ async function createAdminUser() {
   }
 }
 
-// Handle process termination
+// Simple admin creation function for command line arguments
+async function createSimpleAdmin(
+  email,
+  password,
+  firstName,
+  lastName,
+  phoneNumber
+) {
+  try {
+    console.log("🍪 Simple Admin Creation Mode");
+    console.log("============================");
+
+    await mongoose.connect(process.env.MONGODB_URI);
+    console.log("✅ Connected to MongoDB");
+
+    // Validate inputs
+    if (!validateEmail(email)) {
+      throw new Error("Invalid email format");
+    }
+
+    const firstNameValidation = validateName(firstName, "First name");
+    if (!firstNameValidation.valid) {
+      throw new Error(firstNameValidation.message);
+    }
+
+    const lastNameValidation = validateName(lastName, "Last name");
+    if (!lastNameValidation.valid) {
+      throw new Error(lastNameValidation.message);
+    }
+
+    const phoneValidation = validatePhone(phoneNumber);
+    if (!phoneValidation.valid) {
+      throw new Error(phoneValidation.message);
+    }
+
+    const passwordValidation = validatePassword(password);
+    if (!passwordValidation.valid) {
+      throw new Error(passwordValidation.message);
+    }
+
+    // Check for existing users
+    const existingUser = await User.findOne({
+      $or: [
+        { email: email.toLowerCase() },
+        { phoneNumber: phoneNumber.trim() },
+      ],
+    });
+
+    if (existingUser) {
+      if (existingUser.email === email.toLowerCase()) {
+        throw new Error("Email already exists");
+      } else {
+        throw new Error("Phone number already exists");
+      }
+    }
+
+    // Hash password and create user
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const adminUser = new User({
+      email: email.toLowerCase(),
+      password: hashedPassword,
+      role: "admin",
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      phoneNumber: phoneNumber.trim(),
+      isFirstLogin: true,
+      isActive: true,
+    });
+
+    await adminUser.save();
+
+    console.log("✅ Admin user created successfully!");
+    console.log(`👤 Name: ${adminUser.firstName} ${adminUser.lastName}`);
+    console.log(`📧 Email: ${adminUser.email}`);
+    console.log(`📞 Phone: ${adminUser.phoneNumber}`);
+    console.log(`🆔 ID: ${adminUser._id}`);
+
+    return adminUser;
+  } finally {
+    if (mongoose.connection.readyState === 1) {
+      await mongoose.disconnect();
+      console.log("🔌 Disconnected from MongoDB");
+    }
+  }
+}
+
+// Handle process termination gracefully
 process.on("SIGINT", async () => {
   console.log("\n\n👋 Goodbye!");
-  if (rl) {
-    rl.close();
+  rl.close();
+  if (mongoose.connection.readyState === 1) {
+    await mongoose.disconnect();
   }
+  process.exit(0);
+});
+
+process.on("SIGTERM", async () => {
+  console.log("\n\n🛑 Process terminated");
+  rl.close();
   if (mongoose.connection.readyState === 1) {
     await mongoose.disconnect();
   }
@@ -358,30 +521,76 @@ function showHelp() {
   console.log("  2. Backend .env file must be configured with MONGODB_URI");
   console.log("  3. Run this script from the project root directory");
   console.log("");
+  console.log("Required Information:");
+  console.log("  • First Name (2-50 characters)");
+  console.log("  • Last Name (2-50 characters)");
+  console.log("  • Email Address (must be unique and valid)");
+  console.log("  • Phone Number (10-15 digits, must be unique)");
+  console.log("  • Password (minimum 6 characters)");
+  console.log("");
   console.log("Usage:");
-  console.log("  node create-admin.js         Create admin user interactively");
-  console.log("  node create-admin.js --help  Show this help message");
+  console.log(
+    "  node create-admin.js                                    Interactive mode"
+  );
+  console.log(
+    "  node create-admin.js email pass first last phone       Simple mode"
+  );
+  console.log(
+    "  node create-admin.js --help                             Show this help"
+  );
   console.log("");
-  console.log("Example:");
-  console.log("  cd cookie-cutter-orders");
+  console.log("Examples:");
   console.log("  node create-admin.js");
+  console.log(
+    "  node create-admin.js admin@example.com pass123 John Doe 5551234567"
+  );
   console.log("");
+  console.log("Security Notes:");
   console.log(
-    "Note: If you experience issues with password input, try the simple version:"
+    "  • Passwords are visible on screen for reliability (no hidden input)"
   );
-  console.log(
-    "      node simple-create-admin.js admin@example.com password123"
-  );
+  console.log("  • Admin will be required to change password on first login");
+  console.log("  • Email and phone number must be unique in the system");
 }
 
 // Check command line arguments
 const args = process.argv.slice(2);
+
 if (args.includes("--help") || args.includes("-h")) {
   showHelp();
   process.exit(0);
-}
+} else if (args.length === 5) {
+  // Simple mode with all arguments
+  const [email, password, firstName, lastName, phoneNumber] = args;
 
-// Run the script
-if (require.main === module) {
+  createSimpleAdmin(email, password, firstName, lastName, phoneNumber)
+    .then(() => {
+      console.log("\n🎉 Admin creation completed!");
+      process.exit(0);
+    })
+    .catch((error) => {
+      console.error("\n❌ Error:", error.message);
+      process.exit(1);
+    });
+} else if (args.length > 0) {
+  console.log("❌ Invalid arguments provided.");
+  console.log("\nUsage:");
+  console.log("  Interactive mode: node create-admin.js");
+  console.log(
+    "  Simple mode:      node create-admin.js email password firstName lastName phoneNumber"
+  );
+  console.log("  Help:             node create-admin.js --help");
+  process.exit(1);
+} else {
+  // Run interactive mode
   createAdminUser();
 }
+
+module.exports = {
+  createAdminUser,
+  createSimpleAdmin,
+  validateEmail,
+  validateName,
+  validatePhone,
+  validatePassword,
+};
