@@ -9,8 +9,12 @@ import {
   ITEM_TYPES,
   DELIVERY_METHODS,
   PAYMENT_METHODS,
+  MEASUREMENT_UNITS,
+  MEASUREMENT_DIMENSIONS,
   getStageColor,
   formatDate,
+  formatMeasurement,
+  validateMeasurement,
   getNextAllowedStages,
   canEditOrder,
   canDeleteOrder,
@@ -64,6 +68,11 @@ const OrderDetail = () => {
   const [addItemModal, setAddItemModal] = useState({
     isOpen: false,
     type: ITEM_TYPES.CUTTER,
+    measurement: {
+      value: "",
+      unit: MEASUREMENT_UNITS.CM,
+      dimension: MEASUREMENT_DIMENSIONS.LENGTH,
+    },
     additionalComments: "",
   });
 
@@ -393,13 +402,21 @@ const OrderDetail = () => {
   };
 
   const handleAddItem = async () => {
-    const { type, additionalComments } = addItemModal;
+    const { type, measurement, additionalComments } = addItemModal;
+
+    // Validate measurement
+    const measurementValidation = validateMeasurement(measurement);
+    if (!measurementValidation.valid) {
+      showError(measurementValidation.message);
+      return;
+    }
 
     try {
       setActionLoading(true);
 
       await axios.post(`/orders/${id}/items`, {
         type,
+        measurement,
         additionalComments,
       });
 
@@ -408,6 +425,11 @@ const OrderDetail = () => {
       setAddItemModal({
         isOpen: false,
         type: ITEM_TYPES.CUTTER,
+        measurement: {
+          value: "",
+          unit: MEASUREMENT_UNITS.CM,
+          dimension: MEASUREMENT_DIMENSIONS.LENGTH,
+        },
         additionalComments: "",
       });
     } catch (error) {
@@ -1093,16 +1115,30 @@ const OrderDetail = () => {
                   />
                 ) : (
                   <>
-                    {item.additionalComments && (
-                      <div className="mb-4">
+                    {/* Item Details */}
+                    <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
                         <h5 className="text-sm font-medium text-gray-700 mb-1">
-                          Comments:
+                          Measurement:
                         </h5>
-                        <p className="text-sm text-gray-600">
-                          {item.additionalComments}
+                        <p className="text-sm text-gray-900">
+                          {item.measurement
+                            ? formatMeasurement(item.measurement)
+                            : "Not specified (legacy item)"}
                         </p>
                       </div>
-                    )}
+
+                      {item.additionalComments && (
+                        <div>
+                          <h5 className="text-sm font-medium text-gray-700 mb-1">
+                            Comments:
+                          </h5>
+                          <p className="text-sm text-gray-600">
+                            {item.additionalComments}
+                          </p>
+                        </div>
+                      )}
+                    </div>
 
                     {/* Inspiration Images */}
                     <div className="mb-4">
@@ -1509,6 +1545,96 @@ const OrderDetail = () => {
             </select>
           </div>
 
+          {/* Measurement Fields */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Size *
+              </label>
+              <input
+                type="number"
+                value={addItemModal.measurement.value}
+                onChange={(e) =>
+                  setAddItemModal((prev) => ({
+                    ...prev,
+                    measurement: {
+                      ...prev.measurement,
+                      value: parseFloat(e.target.value) || "",
+                    },
+                  }))
+                }
+                placeholder="Enter size"
+                min="0.1"
+                max="1000"
+                step="0.1"
+                required
+                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Unit *
+              </label>
+              <select
+                value={addItemModal.measurement.unit}
+                onChange={(e) =>
+                  setAddItemModal((prev) => ({
+                    ...prev,
+                    measurement: {
+                      ...prev.measurement,
+                      unit: e.target.value,
+                    },
+                  }))
+                }
+                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {Object.values(MEASUREMENT_UNITS).map((unit) => (
+                  <option key={unit} value={unit}>
+                    {unit}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Dimension *
+              </label>
+              <select
+                value={addItemModal.measurement.dimension}
+                onChange={(e) =>
+                  setAddItemModal((prev) => ({
+                    ...prev,
+                    measurement: {
+                      ...prev.measurement,
+                      dimension: e.target.value,
+                    },
+                  }))
+                }
+                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {Object.values(MEASUREMENT_DIMENSIONS).map((dimension) => (
+                  <option key={dimension} value={dimension}>
+                    {dimension.charAt(0).toUpperCase() + dimension.slice(1)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Measurement Preview */}
+          {addItemModal.measurement.value && (
+            <div className="p-3 bg-blue-50 rounded-md">
+              <p className="text-sm text-blue-700">
+                <strong>📏 Size Preview:</strong>{" "}
+                {addItemModal.measurement.value}
+                {addItemModal.measurement.unit} (
+                {addItemModal.measurement.dimension})
+              </p>
+            </div>
+          )}
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Additional Comments
@@ -1545,6 +1671,11 @@ const OrderDetail = () => {
                 setAddItemModal({
                   isOpen: false,
                   type: ITEM_TYPES.CUTTER,
+                  measurement: {
+                    value: "",
+                    unit: MEASUREMENT_UNITS.CM,
+                    dimension: MEASUREMENT_DIMENSIONS.LENGTH,
+                  },
                   additionalComments: "",
                 })
               }
@@ -1555,7 +1686,7 @@ const OrderDetail = () => {
               variant="primary"
               onClick={handleAddItem}
               loading={actionLoading}
-              disabled={actionLoading}
+              disabled={actionLoading || !addItemModal.measurement.value}
             >
               Add Item
             </Button>
@@ -1597,11 +1728,24 @@ const OrderDetail = () => {
 const EditItemForm = ({ item, onSave, onCancel }) => {
   const [formData, setFormData] = useState({
     type: item.type,
-    additionalComments: item.additionalComments,
+    measurement: {
+      value: item.measurement?.value || "",
+      unit: item.measurement?.unit || MEASUREMENT_UNITS.CM,
+      dimension: item.measurement?.dimension || MEASUREMENT_DIMENSIONS.LENGTH,
+    },
+    additionalComments: item.additionalComments || "",
   });
 
   const handleSubmit = (e) => {
     e.preventDefault();
+
+    // Validate measurement
+    const measurementValidation = validateMeasurement(formData.measurement);
+    if (!measurementValidation.valid) {
+      alert(measurementValidation.message);
+      return;
+    }
+
     onSave(formData);
   };
 
@@ -1626,6 +1770,94 @@ const EditItemForm = ({ item, onSave, onCancel }) => {
         </select>
       </div>
 
+      {/* Measurement Fields */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Size *
+          </label>
+          <input
+            type="number"
+            value={formData.measurement.value}
+            onChange={(e) =>
+              setFormData((prev) => ({
+                ...prev,
+                measurement: {
+                  ...prev.measurement,
+                  value: parseFloat(e.target.value) || "",
+                },
+              }))
+            }
+            placeholder="Enter size"
+            min="0.1"
+            max="1000"
+            step="0.1"
+            required
+            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Unit *
+          </label>
+          <select
+            value={formData.measurement.unit}
+            onChange={(e) =>
+              setFormData((prev) => ({
+                ...prev,
+                measurement: {
+                  ...prev.measurement,
+                  unit: e.target.value,
+                },
+              }))
+            }
+            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            {Object.values(MEASUREMENT_UNITS).map((unit) => (
+              <option key={unit} value={unit}>
+                {unit}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Dimension *
+          </label>
+          <select
+            value={formData.measurement.dimension}
+            onChange={(e) =>
+              setFormData((prev) => ({
+                ...prev,
+                measurement: {
+                  ...prev.measurement,
+                  dimension: e.target.value,
+                },
+              }))
+            }
+            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            {Object.values(MEASUREMENT_DIMENSIONS).map((dimension) => (
+              <option key={dimension} value={dimension}>
+                {dimension.charAt(0).toUpperCase() + dimension.slice(1)}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* Measurement Preview */}
+      {formData.measurement.value && (
+        <div className="p-3 bg-blue-50 rounded-md">
+          <p className="text-sm text-blue-700">
+            <strong>📏 Size Preview:</strong> {formData.measurement.value}
+            {formData.measurement.unit} ({formData.measurement.dimension})
+          </p>
+        </div>
+      )}
+
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">
           Additional Comments
@@ -1648,7 +1880,11 @@ const EditItemForm = ({ item, onSave, onCancel }) => {
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit" variant="primary">
+        <Button
+          type="submit"
+          variant="primary"
+          disabled={!formData.measurement.value}
+        >
           Save Changes
         </Button>
       </div>

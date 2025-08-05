@@ -1,4 +1,4 @@
-// models/Order.js - Order model with all required properties
+// models/Order.js - Order model with measurement property added
 const mongoose = require("mongoose");
 
 const itemSchema = new mongoose.Schema({
@@ -6,6 +6,26 @@ const itemSchema = new mongoose.Schema({
     type: String,
     enum: ["Cutter", "Stamp", "Stamp & Cutter"],
     required: true,
+  },
+  measurement: {
+    value: {
+      type: Number,
+      required: true,
+      min: 0.1,
+      max: 1000, // Maximum 1000cm/mm
+    },
+    unit: {
+      type: String,
+      enum: ["cm", "mm"],
+      required: true,
+      default: "cm",
+    },
+    dimension: {
+      type: String,
+      enum: ["length", "width", "diameter"],
+      required: true,
+      default: "length",
+    },
   },
   inspirationImages: [
     {

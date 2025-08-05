@@ -1,9 +1,14 @@
-// src/components/Orders/CreateOrder.js - Create new order component
+// src/components/Orders/CreateOrder.js - Create new order component with measurement support
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
-import { ITEM_TYPES } from "../../utils/orderHelpers";
+import {
+  ITEM_TYPES,
+  MEASUREMENT_UNITS,
+  MEASUREMENT_DIMENSIONS,
+  validateMeasurement,
+} from "../../utils/orderHelpers";
 import Button from "../UI/Button";
 import LoadingSpinner from "../UI/LoadingSpinner";
 import axios from "axios";
@@ -19,6 +24,11 @@ const CreateOrder = () => {
     items: [
       {
         type: ITEM_TYPES.CUTTER,
+        measurement: {
+          value: "",
+          unit: MEASUREMENT_UNITS.CM,
+          dimension: MEASUREMENT_DIMENSIONS.LENGTH,
+        },
         additionalComments: "",
       },
     ],
@@ -50,6 +60,23 @@ const CreateOrder = () => {
     }));
   };
 
+  const handleMeasurementChange = (index, measurementField, value) => {
+    setOrderData((prev) => ({
+      ...prev,
+      items: prev.items.map((item, i) =>
+        i === index
+          ? {
+              ...item,
+              measurement: {
+                ...item.measurement,
+                [measurementField]: value,
+              },
+            }
+          : item
+      ),
+    }));
+  };
+
   const addItem = () => {
     setOrderData((prev) => ({
       ...prev,
@@ -57,6 +84,11 @@ const CreateOrder = () => {
         ...prev.items,
         {
           type: ITEM_TYPES.CUTTER,
+          measurement: {
+            value: "",
+            unit: MEASUREMENT_UNITS.CM,
+            dimension: MEASUREMENT_DIMENSIONS.LENGTH,
+          },
           additionalComments: "",
         },
       ],
@@ -94,8 +126,16 @@ const CreateOrder = () => {
 
     for (let i = 0; i < orderData.items.length; i++) {
       const item = orderData.items[i];
+
       if (!item.type) {
         showError(`Please select a type for item ${i + 1}`);
+        return false;
+      }
+
+      // Validate measurement
+      const measurementValidation = validateMeasurement(item.measurement);
+      if (!measurementValidation.valid) {
+        showError(`Item ${i + 1}: ${measurementValidation.message}`);
         return false;
       }
     }
@@ -238,6 +278,7 @@ const CreateOrder = () => {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Item Type */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Item Type *
@@ -258,32 +299,116 @@ const CreateOrder = () => {
                     </select>
                   </div>
 
-                  <div className="md:col-span-1">
+                  {/* Measurement Value */}
+                  <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Additional Comments
+                      Measurement Value *
                     </label>
-                    <textarea
-                      value={item.additionalComments}
+                    <input
+                      type="number"
+                      value={item.measurement.value}
                       onChange={(e) =>
-                        handleItemChange(
+                        handleMeasurementChange(
                           index,
-                          "additionalComments",
+                          "value",
+                          parseFloat(e.target.value) || ""
+                        )
+                      }
+                      placeholder="Enter size"
+                      min="0.1"
+                      max="1000"
+                      step="0.1"
+                      required
+                      className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  {/* Measurement Unit */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Unit *
+                    </label>
+                    <select
+                      value={item.measurement.unit}
+                      onChange={(e) =>
+                        handleMeasurementChange(index, "unit", e.target.value)
+                      }
+                      required
+                      className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      {Object.values(MEASUREMENT_UNITS).map((unit) => (
+                        <option key={unit} value={unit}>
+                          {unit}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Measurement Dimension */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Dimension *
+                    </label>
+                    <select
+                      value={item.measurement.dimension}
+                      onChange={(e) =>
+                        handleMeasurementChange(
+                          index,
+                          "dimension",
                           e.target.value
                         )
                       }
-                      placeholder="Describe your requirements, size, special features..."
-                      rows={3}
-                      maxLength={1000}
+                      required
                       className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    <div className="text-xs text-gray-500 mt-1">
-                      {item.additionalComments.length}/1000 characters
-                    </div>
+                    >
+                      {Object.values(MEASUREMENT_DIMENSIONS).map(
+                        (dimension) => (
+                          <option key={dimension} value={dimension}>
+                            {dimension.charAt(0).toUpperCase() +
+                              dimension.slice(1)}
+                          </option>
+                        )
+                      )}
+                    </select>
                   </div>
                 </div>
 
-                <div className="mt-4 p-3 bg-blue-50 rounded-md">
-                  <p className="text-sm text-blue-700">
+                {/* Additional Comments */}
+                <div className="mt-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Additional Comments
+                  </label>
+                  <textarea
+                    value={item.additionalComments}
+                    onChange={(e) =>
+                      handleItemChange(
+                        index,
+                        "additionalComments",
+                        e.target.value
+                      )
+                    }
+                    placeholder="Describe your requirements, special features, design details..."
+                    rows={3}
+                    maxLength={1000}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <div className="text-xs text-gray-500 mt-1">
+                    {item.additionalComments.length}/1000 characters
+                  </div>
+                </div>
+
+                {/* Measurement Preview */}
+                {item.measurement.value && (
+                  <div className="mt-3 p-3 bg-blue-50 rounded-md">
+                    <p className="text-sm text-blue-700">
+                      <strong>📏 Size:</strong> {item.measurement.value}
+                      {item.measurement.unit} ({item.measurement.dimension})
+                    </p>
+                  </div>
+                )}
+
+                <div className="mt-4 p-3 bg-gray-50 rounded-md">
+                  <p className="text-sm text-gray-700">
                     <strong>📸 Important:</strong> You will need to upload at
                     least one inspiration image for each item before you can
                     submit the order. Images help us understand your vision
@@ -304,6 +429,7 @@ const CreateOrder = () => {
               </p>
               <p>• You can edit and add images before submitting</p>
               <p>• Submit when ready for admin review</p>
+              <p>• All measurements must be specified</p>
             </div>
 
             <div className="flex space-x-3">
@@ -351,12 +477,18 @@ const CreateOrder = () => {
           </div>
 
           <div>
-            <h4 className="font-medium text-gray-800 mb-2">Order Process</h4>
+            <h4 className="font-medium text-gray-800 mb-2">Measurements</h4>
             <ul className="text-gray-600 space-y-1">
-              <li>• Create order with items</li>
-              <li>• Add inspiration images</li>
-              <li>• Submit for review</li>
-              <li>• Approve final design & pricing</li>
+              <li>
+                • <strong>Length:</strong> End-to-end distance
+              </li>
+              <li>
+                • <strong>Width:</strong> Side-to-side distance
+              </li>
+              <li>
+                • <strong>Diameter:</strong> For circular shapes
+              </li>
+              <li>• Use cm for larger items, mm for precision</li>
             </ul>
           </div>
 
@@ -364,7 +496,7 @@ const CreateOrder = () => {
             <h4 className="font-medium text-gray-800 mb-2">Tips</h4>
             <ul className="text-gray-600 space-y-1">
               <li>• Be specific in comments</li>
-              <li>• Include size requirements</li>
+              <li>• Double-check measurements</li>
               <li>• Mention special features</li>
               <li>• Upload clear reference images</li>
             </ul>

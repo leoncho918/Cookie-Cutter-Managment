@@ -89,6 +89,35 @@ router.post("/", async (req, res) => {
       ) {
         return res.status(400).json({ message: "Invalid item type" });
       }
+
+      // Validate measurement
+      if (
+        !item.measurement ||
+        !item.measurement.value ||
+        item.measurement.value <= 0
+      ) {
+        return res
+          .status(400)
+          .json({ message: "Valid measurement is required for all items" });
+      }
+
+      if (
+        !item.measurement.unit ||
+        !["cm", "mm"].includes(item.measurement.unit)
+      ) {
+        return res
+          .status(400)
+          .json({ message: "Valid measurement unit is required" });
+      }
+
+      if (
+        !item.measurement.dimension ||
+        !["length", "width", "diameter"].includes(item.measurement.dimension)
+      ) {
+        return res
+          .status(400)
+          .json({ message: "Valid measurement dimension is required" });
+      }
     }
 
     // Generate order number manually
@@ -383,14 +412,39 @@ router.post("/:id/items", async (req, res) => {
         .json({ message: "Can only add items to draft orders" });
     }
 
-    const { type, additionalComments } = req.body;
+    const { type, measurement, additionalComments } = req.body;
 
     if (!type || !["Cutter", "Stamp", "Stamp & Cutter"].includes(type)) {
       return res.status(400).json({ message: "Valid item type is required" });
     }
 
+    // Validate measurement
+    if (!measurement || !measurement.value || measurement.value <= 0) {
+      return res.status(400).json({ message: "Valid measurement is required" });
+    }
+
+    if (!measurement.unit || !["cm", "mm"].includes(measurement.unit)) {
+      return res
+        .status(400)
+        .json({ message: "Valid measurement unit is required" });
+    }
+
+    if (
+      !measurement.dimension ||
+      !["length", "width", "diameter"].includes(measurement.dimension)
+    ) {
+      return res
+        .status(400)
+        .json({ message: "Valid measurement dimension is required" });
+    }
+
     const newItem = {
       type,
+      measurement: {
+        value: measurement.value,
+        unit: measurement.unit,
+        dimension: measurement.dimension,
+      },
       additionalComments: additionalComments || "",
       inspirationImages: [],
       previewImages: [],
@@ -403,6 +457,7 @@ router.post("/:id/items", async (req, res) => {
       orderId: order._id,
       orderNumber: order.orderNumber,
       itemType: type,
+      measurement: measurement,
       totalItems: order.items.length,
       addedBy: req.user.email,
     });
@@ -456,11 +511,12 @@ router.put("/:id/items/:itemId", requireBakerOrAdmin, async (req, res) => {
       return res.status(404).json({ message: "Item not found" });
     }
 
-    const { type, additionalComments } = req.body;
+    const { type, measurement, additionalComments } = req.body;
 
     // Store original values for logging
     const originalItem = {
       type: item.type,
+      measurement: item.measurement,
       comments: item.additionalComments,
     };
 
@@ -469,6 +525,36 @@ router.put("/:id/items/:itemId", requireBakerOrAdmin, async (req, res) => {
         return res.status(400).json({ message: "Invalid item type" });
       }
       item.type = type;
+    }
+
+    if (measurement) {
+      // Validate measurement
+      if (!measurement.value || measurement.value <= 0) {
+        return res
+          .status(400)
+          .json({ message: "Valid measurement value is required" });
+      }
+
+      if (!measurement.unit || !["cm", "mm"].includes(measurement.unit)) {
+        return res
+          .status(400)
+          .json({ message: "Valid measurement unit is required" });
+      }
+
+      if (
+        !measurement.dimension ||
+        !["length", "width", "diameter"].includes(measurement.dimension)
+      ) {
+        return res
+          .status(400)
+          .json({ message: "Valid measurement dimension is required" });
+      }
+
+      item.measurement = {
+        value: measurement.value,
+        unit: measurement.unit,
+        dimension: measurement.dimension,
+      };
     }
 
     if (additionalComments !== undefined) {
@@ -484,6 +570,9 @@ router.put("/:id/items/:itemId", requireBakerOrAdmin, async (req, res) => {
       updatedBy: req.user.email,
       changes: {
         typeChanged: originalItem.type !== item.type,
+        measurementChanged:
+          JSON.stringify(originalItem.measurement) !==
+          JSON.stringify(item.measurement),
         commentsChanged: originalItem.comments !== item.additionalComments,
       },
     });
@@ -514,18 +603,28 @@ router.put("/:id/items/:itemId", requireBakerOrAdmin, async (req, res) => {
 // Delete item from order
 router.delete("/:id/items/:itemId", requireBakerOrAdmin, async (req, res) => {
   try {
+    console.log("🗑️ Delete item request received:", {
+      orderId: req.params.id,
+      itemId: req.params.itemId,
+      userRole: req.user.role,
+      userEmail: req.user.email,
+    });
+
     const order = await Order.findById(req.params.id);
 
     if (!order) {
+      console.log("❌ Order not found:", req.params.id);
       return res.status(404).json({ message: "Order not found" });
     }
 
     // Check permissions
     if (req.user.role === "baker") {
       if (order.bakerId !== req.user.bakerId) {
+        console.log("❌ Access denied - baker doesn't own order");
         return res.status(403).json({ message: "Access denied to this order" });
       }
       if (order.stage !== "Draft") {
+        console.log("❌ Cannot delete from non-draft order:", order.stage);
         return res
           .status(403)
           .json({ message: "Can only delete items from draft orders" });
@@ -534,24 +633,29 @@ router.delete("/:id/items/:itemId", requireBakerOrAdmin, async (req, res) => {
 
     const item = order.items.id(req.params.itemId);
     if (!item) {
+      console.log("❌ Item not found:", req.params.itemId);
       return res.status(404).json({ message: "Item not found" });
     }
 
     // Store item info for logging
     const deletedItemInfo = {
       type: item.type,
+      measurement: item.measurement,
       comments: item.additionalComments,
       inspirationImagesCount: item.inspirationImages?.length || 0,
       previewImagesCount: item.previewImages?.length || 0,
     };
 
+    console.log("🔍 Item to delete:", deletedItemInfo);
+
     // TODO: Delete associated images from S3 before removing item
     // This would require implementing image cleanup functionality
 
+    // Remove the item using the pull method
     order.items.pull(req.params.itemId);
     await order.save();
 
-    console.log("📋 Item deleted from order:", {
+    console.log("✅ Item deleted from order:", {
       orderId: order._id,
       orderNumber: order.orderNumber,
       itemId: req.params.itemId,
@@ -578,8 +682,12 @@ router.delete("/:id/items/:itemId", requireBakerOrAdmin, async (req, res) => {
       order,
     });
   } catch (error) {
-    console.error("Error deleting item:", error);
-    res.status(500).json({ message: "Server error deleting item" });
+    console.error("❌ Error deleting item:", error);
+    console.error("Error stack:", error.stack);
+    res.status(500).json({
+      message: "Server error deleting item",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
   }
 });
 

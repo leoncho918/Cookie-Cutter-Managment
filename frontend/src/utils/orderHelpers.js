@@ -1,4 +1,4 @@
-// src/utils/orderHelpers.js - Order utility functions
+// src/utils/orderHelpers.js - Order utility functions with measurement support
 export const ORDER_STAGES = {
   DRAFT: "Draft",
   SUBMITTED: "Submitted",
@@ -14,6 +14,17 @@ export const ITEM_TYPES = {
   CUTTER: "Cutter",
   STAMP: "Stamp",
   STAMP_AND_CUTTER: "Stamp & Cutter",
+};
+
+export const MEASUREMENT_UNITS = {
+  CM: "cm",
+  MM: "mm",
+};
+
+export const MEASUREMENT_DIMENSIONS = {
+  LENGTH: "length",
+  WIDTH: "width",
+  DIAMETER: "diameter",
 };
 
 export const DELIVERY_METHODS = {
@@ -104,6 +115,66 @@ export const formatDate = (date) => {
 // Format date for input field
 export const formatDateForInput = (date) => {
   return new Date(date).toISOString().split("T")[0];
+};
+
+// Format measurement for display
+export const formatMeasurement = (measurement) => {
+  if (!measurement || !measurement.value || measurement.value === "") {
+    return "Not specified";
+  }
+
+  return `${measurement.value}${measurement.unit || "cm"} (${
+    measurement.dimension || "length"
+  })`;
+};
+
+// Validate measurement input
+export const validateMeasurement = (measurement) => {
+  if (!measurement) {
+    return { valid: false, message: "Measurement is required" };
+  }
+
+  if (!measurement.value || measurement.value <= 0) {
+    return {
+      valid: false,
+      message: "Measurement value must be greater than 0",
+    };
+  }
+
+  if (measurement.value > 1000) {
+    return { valid: false, message: "Measurement value cannot exceed 1000" };
+  }
+
+  if (
+    !measurement.unit ||
+    !Object.values(MEASUREMENT_UNITS).includes(measurement.unit)
+  ) {
+    return { valid: false, message: "Valid measurement unit is required" };
+  }
+
+  if (
+    !measurement.dimension ||
+    !Object.values(MEASUREMENT_DIMENSIONS).includes(measurement.dimension)
+  ) {
+    return { valid: false, message: "Valid measurement dimension is required" };
+  }
+
+  return { valid: true };
+};
+
+// Convert measurements between units
+export const convertMeasurement = (value, fromUnit, toUnit) => {
+  if (fromUnit === toUnit) return value;
+
+  if (fromUnit === MEASUREMENT_UNITS.CM && toUnit === MEASUREMENT_UNITS.MM) {
+    return value * 10;
+  }
+
+  if (fromUnit === MEASUREMENT_UNITS.MM && toUnit === MEASUREMENT_UNITS.CM) {
+    return value / 10;
+  }
+
+  return value;
 };
 
 // Check if user can edit order
