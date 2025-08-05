@@ -21,11 +21,7 @@ export const MEASUREMENT_UNITS = {
   MM: "mm",
 };
 
-export const MEASUREMENT_DIMENSIONS = {
-  LENGTH: "length",
-  WIDTH: "width",
-  DIAMETER: "diameter",
-};
+// Remove MEASUREMENT_DIMENSIONS as it's no longer needed
 
 export const DELIVERY_METHODS = {
   PICKUP: "Pickup",
@@ -123,9 +119,7 @@ export const formatMeasurement = (measurement) => {
     return "Not specified";
   }
 
-  return `${measurement.value}${measurement.unit || "cm"} (${
-    measurement.dimension || "length"
-  })`;
+  return `${measurement.value}${measurement.unit || "cm"}`;
 };
 
 // Validate measurement input
@@ -150,13 +144,6 @@ export const validateMeasurement = (measurement) => {
     !Object.values(MEASUREMENT_UNITS).includes(measurement.unit)
   ) {
     return { valid: false, message: "Valid measurement unit is required" };
-  }
-
-  if (
-    !measurement.dimension ||
-    !Object.values(MEASUREMENT_DIMENSIONS).includes(measurement.dimension)
-  ) {
-    return { valid: false, message: "Valid measurement dimension is required" };
   }
 
   return { valid: true };

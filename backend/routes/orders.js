@@ -109,15 +109,6 @@ router.post("/", async (req, res) => {
           .status(400)
           .json({ message: "Valid measurement unit is required" });
       }
-
-      if (
-        !item.measurement.dimension ||
-        !["length", "width", "diameter"].includes(item.measurement.dimension)
-      ) {
-        return res
-          .status(400)
-          .json({ message: "Valid measurement dimension is required" });
-      }
     }
 
     // Generate order number manually
@@ -429,21 +420,11 @@ router.post("/:id/items", async (req, res) => {
         .json({ message: "Valid measurement unit is required" });
     }
 
-    if (
-      !measurement.dimension ||
-      !["length", "width", "diameter"].includes(measurement.dimension)
-    ) {
-      return res
-        .status(400)
-        .json({ message: "Valid measurement dimension is required" });
-    }
-
     const newItem = {
       type,
       measurement: {
         value: measurement.value,
         unit: measurement.unit,
-        dimension: measurement.dimension,
       },
       additionalComments: additionalComments || "",
       inspirationImages: [],
@@ -541,19 +522,9 @@ router.put("/:id/items/:itemId", requireBakerOrAdmin, async (req, res) => {
           .json({ message: "Valid measurement unit is required" });
       }
 
-      if (
-        !measurement.dimension ||
-        !["length", "width", "diameter"].includes(measurement.dimension)
-      ) {
-        return res
-          .status(400)
-          .json({ message: "Valid measurement dimension is required" });
-      }
-
       item.measurement = {
         value: measurement.value,
         unit: measurement.unit,
-        dimension: measurement.dimension,
       };
     }
 

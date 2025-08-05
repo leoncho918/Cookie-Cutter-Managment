@@ -20,12 +20,6 @@ const itemSchema = new mongoose.Schema({
       required: true,
       default: "cm",
     },
-    dimension: {
-      type: String,
-      enum: ["length", "width", "diameter"],
-      required: true,
-      default: "length",
-    },
   },
   inspirationImages: [
     {

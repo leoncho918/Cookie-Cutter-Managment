@@ -10,7 +10,6 @@ import {
   DELIVERY_METHODS,
   PAYMENT_METHODS,
   MEASUREMENT_UNITS,
-  MEASUREMENT_DIMENSIONS,
   getStageColor,
   formatDate,
   formatMeasurement,
@@ -71,7 +70,6 @@ const OrderDetail = () => {
     measurement: {
       value: "",
       unit: MEASUREMENT_UNITS.CM,
-      dimension: MEASUREMENT_DIMENSIONS.LENGTH,
     },
     additionalComments: "",
   });
