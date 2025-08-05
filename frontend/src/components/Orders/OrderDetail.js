@@ -49,6 +49,7 @@ const OrderDetail = () => {
     targetStage: "",
     price: "",
     comments: "",
+  }); 
   const [imageModal, setImageModal] = useState({
     isOpen: false,
     imageUrl: "",
@@ -412,22 +413,22 @@ const OrderDetail = () => {
       )
     ) {
       try {
-        console.log("🗑️ Initiating order deletion:", id);
-        setLoading(true); // Show loading state during deletion
-        
-        await axios.delete(`/orders/${id}`);
-        
-        console.log("✅ Order deleted successfully");
-        showSuccess("Order deleted successfully");
-        
-        // Clear order state and navigate immediately
-        setOrder(null);
-        navigate("/orders");
-      } catch (error) {
-        console.error("❌ Error deleting order:", error);
-        showError(error.response?.data?.message || "Failed to delete order");
-        setLoading(false); // Reset loading state on error
-      }
+         console.log("🗑️ Initiating order deletion:", id);
+      setLoading(true); // Show loading state during deletion
+      
+      await axios.delete(`/orders/${id}`);
+      
+      console.log("✅ Order deleted successfully");
+      showSuccess("Order deleted successfully");
+      
+      // Clear order state and navigate immediately
+      setOrder(null);
+      navigate("/orders");
+    } catch (error) {
+      console.error("❌ Error deleting order:", error);
+      showError(error.response?.data?.message || "Failed to delete order");
+      setLoading(false); // Reset loading state on error
+    }
     }
   };
 
