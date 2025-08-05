@@ -844,6 +844,8 @@ const OrderDetail = () => {
                       ? "Submit Order"
                       : stage === ORDER_STAGES.READY_TO_PRINT
                       ? "Approve Order"
+                      : stage === ORDER_STAGES.REQUESTED_CHANGES
+                      ? "Request Changes"
                       : `Move to ${stage}`}
                   </Button>
                 );

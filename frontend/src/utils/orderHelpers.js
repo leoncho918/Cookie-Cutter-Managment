@@ -42,11 +42,9 @@ export const getNextAllowedStages = (currentStage, userRole) => {
       [ORDER_STAGES.SUBMITTED]: [ORDER_STAGES.UNDER_REVIEW, ORDER_STAGES.DRAFT], // Can send back to draft
       [ORDER_STAGES.UNDER_REVIEW]: [
         ORDER_STAGES.REQUIRES_APPROVAL,
-        ORDER_STAGES.REQUESTED_CHANGES,
         ORDER_STAGES.SUBMITTED,
       ], // Can go back
       [ORDER_STAGES.REQUIRES_APPROVAL]: [
-        ORDER_STAGES.REQUESTED_CHANGES,
         ORDER_STAGES.READY_TO_PRINT,
         ORDER_STAGES.UNDER_REVIEW,
       ], // Can override baker approval
@@ -71,7 +69,10 @@ export const getNextAllowedStages = (currentStage, userRole) => {
       [ORDER_STAGES.DRAFT]: [ORDER_STAGES.SUBMITTED],
       [ORDER_STAGES.SUBMITTED]: [], // Only admin can move from submitted
       [ORDER_STAGES.UNDER_REVIEW]: [], // Only admin can move from under review
-      [ORDER_STAGES.REQUIRES_APPROVAL]: [ORDER_STAGES.READY_TO_PRINT], // Baker approves
+      [ORDER_STAGES.REQUIRES_APPROVAL]: [
+        ORDER_STAGES.READY_TO_PRINT,
+        ORDER_STAGES.REQUESTED_CHANGES,
+      ], // Baker approves
       [ORDER_STAGES.REQUESTED_CHANGES]: [], // Wait for admin to make changes
       [ORDER_STAGES.READY_TO_PRINT]: [], // Only admin can move to printing
       [ORDER_STAGES.PRINTING]: [], // Only admin can mark as completed
