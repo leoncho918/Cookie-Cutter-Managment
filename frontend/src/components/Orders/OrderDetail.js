@@ -49,7 +49,7 @@ const OrderDetail = () => {
     targetStage: "",
     price: "",
     comments: "",
-  }); 
+  });
   const [imageModal, setImageModal] = useState({
     isOpen: false,
     imageUrl: "",
@@ -135,7 +135,9 @@ const OrderDetail = () => {
               message = `Completion details updated by ${updatedBy.email}`;
               break;
             default:
-              message = `Order ${eventType.replace("_", " ")} by ${updatedBy.email}`;
+              message = `Order ${eventType.replace("_", " ")} by ${
+                updatedBy.email
+              }`;
           }
           showInfo(message);
         }
@@ -160,7 +162,8 @@ const OrderDetail = () => {
 
         // Don't show notifications for updates made by the current user
         if (updatedBy.email !== user.email) {
-          const action = eventType === "image_uploaded" ? "uploaded" : "deleted";
+          const action =
+            eventType === "image_uploaded" ? "uploaded" : "deleted";
           const message = `${imageType} image ${action} by ${updatedBy.email}`;
           showInfo(message);
         }
@@ -191,7 +194,7 @@ const OrderDetail = () => {
       if (data.orderId === id && data.updatedBy.email !== user.email) {
         const eventMessages = {
           item_added: "New item added to order",
-          item_updated: "Order item updated", 
+          item_updated: "Order item updated",
           item_deleted: "Item removed from order",
         };
         showInfo(eventMessages[data.eventType] || "Order items changed");
@@ -200,7 +203,9 @@ const OrderDetail = () => {
 
     const handleOrderImagesChanged = (data) => {
       if (data.orderId === id) {
-        console.log("🖼️ Order images changed event received, refreshing display");
+        console.log(
+          "🖼️ Order images changed event received, refreshing display"
+        );
         // Use the specialized refresh function for better handling
         loadOrderAfterUpload();
       }
@@ -224,10 +229,10 @@ const OrderDetail = () => {
 
     return () => {
       console.log("🔌 Cleaning up enhanced socket listeners");
-      
+
       if (unsubscribeOrder) unsubscribeOrder();
       if (unsubscribeImage) unsubscribeImage();
-      
+
       if (socket) {
         socket.off("order-deleted", handleOrderDeleted);
         socket.off("order-stage-changed", handleOrderStageChanged);
@@ -251,7 +256,7 @@ const OrderDetail = () => {
   // Enhanced load order function with retry logic
   const loadOrderWithRetry = async (retryCount = 0) => {
     const maxRetries = 3;
-    
+
     // Don't reload if upload is in progress
     if (uploadInProgressRef.current) {
       console.log("🚫 Skipping order reload - upload in progress");
@@ -260,28 +265,33 @@ const OrderDetail = () => {
 
     try {
       setLoading(true);
-      console.log(`🔄 Loading order with ID: ${id} (attempt ${retryCount + 1})`);
-      
+      console.log(
+        `🔄 Loading order with ID: ${id} (attempt ${retryCount + 1})`
+      );
+
       const response = await axios.get(`/orders/${id}`);
       console.log("✅ Order loaded successfully");
       setOrder(response.data);
-      
+
       // Reset retry count on successful load
       setLoading(false);
     } catch (error) {
-      console.error(`❌ Error loading order (attempt ${retryCount + 1}):`, error);
-      
+      console.error(
+        `❌ Error loading order (attempt ${retryCount + 1}):`,
+        error
+      );
+
       if (retryCount < maxRetries && error.response?.status !== 404) {
         // Retry with exponential backoff for non-404 errors
         const delay = Math.pow(2, retryCount) * 1000; // 1s, 2s, 4s
         console.log(`⏳ Retrying in ${delay}ms...`);
-        
+
         setTimeout(() => {
           loadOrderWithRetry(retryCount + 1);
         }, delay);
       } else {
         setLoading(false);
-        
+
         if (error.response?.status === 404) {
           showError("Order not found");
           navigate("/orders");
@@ -407,28 +417,31 @@ const OrderDetail = () => {
       setActionLoading(false);
     }
   };
+
+  // FIXED: Complete handleOrderDelete function
+  const handleOrderDelete = async () => {
     if (
       window.confirm(
         "Are you sure you want to delete this entire order? This action cannot be undone."
       )
     ) {
       try {
-         console.log("🗑️ Initiating order deletion:", id);
-      setLoading(true); // Show loading state during deletion
-      
-      await axios.delete(`/orders/${id}`);
-      
-      console.log("✅ Order deleted successfully");
-      showSuccess("Order deleted successfully");
-      
-      // Clear order state and navigate immediately
-      setOrder(null);
-      navigate("/orders");
-    } catch (error) {
-      console.error("❌ Error deleting order:", error);
-      showError(error.response?.data?.message || "Failed to delete order");
-      setLoading(false); // Reset loading state on error
-    }
+        console.log("🗑️ Initiating order deletion:", id);
+        setLoading(true); // Show loading state during deletion
+
+        await axios.delete(`/orders/${id}`);
+
+        console.log("✅ Order deleted successfully");
+        showSuccess("Order deleted successfully");
+
+        // Clear order state and navigate immediately
+        setOrder(null);
+        navigate("/orders");
+      } catch (error) {
+        console.error("❌ Error deleting order:", error);
+        showError(error.response?.data?.message || "Failed to delete order");
+        setLoading(false); // Reset loading state on error
+      }
     }
   };
 
@@ -447,7 +460,7 @@ const OrderDetail = () => {
     try {
       // Set upload in progress flag
       uploadInProgressRef.current = true;
-      
+
       setUploadingImages((prev) => ({
         ...prev,
         [`${itemId}-${imageType}`]: true,
@@ -464,26 +477,33 @@ const OrderDetail = () => {
       for (let i = 0; i < fileArray.length; i++) {
         const file = fileArray[i];
         const progress = Math.round(((i + 1) / fileArray.length) * 100);
-        
-        console.log(`📤 Uploading ${i + 1}/${fileArray.length}: ${file.name} (${progress}%)`);
+
+        console.log(
+          `📤 Uploading ${i + 1}/${fileArray.length}: ${
+            file.name
+          } (${progress}%)`
+        );
 
         try {
           const formData = new FormData();
           formData.append("image", file);
 
-          const response = await axios.post(`/upload/${imageType}/${id}/${itemId}`, formData, {
-            headers: { "Content-Type": "multipart/form-data" },
-            timeout: 30000,
-          });
+          const response = await axios.post(
+            `/upload/${imageType}/${id}/${itemId}`,
+            formData,
+            {
+              headers: { "Content-Type": "multipart/form-data" },
+              timeout: 30000,
+            }
+          );
 
           console.log(`✅ Upload response for ${file.name}:`, response.data);
           successCount++;
-          
+
           // Show progress for multiple files
           if (fileArray.length > 1) {
             showInfo(`Uploaded ${successCount}/${fileArray.length} images`);
           }
-
         } catch (fileError) {
           console.error(`❌ Failed to upload ${file.name}:`, fileError);
           failedFiles.push(file.name);
@@ -497,11 +517,12 @@ const OrderDetail = () => {
 
       // Final success/error messages
       if (successCount > 0) {
-        const message = successCount === fileArray.length 
-          ? fileArray.length === 1 
-            ? "Image uploaded successfully!"
-            : `All ${fileArray.length} image(s) uploaded successfully!`
-          : `${successCount} of ${fileArray.length} image(s) uploaded successfully`;
+        const message =
+          successCount === fileArray.length
+            ? fileArray.length === 1
+              ? "Image uploaded successfully!"
+              : `All ${fileArray.length} image(s) uploaded successfully!`
+            : `${successCount} of ${fileArray.length} image(s) uploaded successfully`;
         showSuccess(message);
 
         // Force refresh order data to show new images
@@ -514,7 +535,6 @@ const OrderDetail = () => {
       if (failedFiles.length > 0) {
         showError(`Failed to upload: ${failedFiles.join(", ")}`);
       }
-
     } catch (error) {
       console.error("❌ Upload process failed:", error);
       showError("Upload process failed");
@@ -537,8 +557,9 @@ const OrderDetail = () => {
 
       const response = await axios.get(`/orders/${id}`);
       setOrder(response.data);
-      
-      console.log("✅ Order data refreshed successfully - new image count:", 
+
+      console.log(
+        "✅ Order data refreshed successfully - new image count:",
         response.data.items.reduce(
           (total, item) =>
             total +
@@ -550,7 +571,9 @@ const OrderDetail = () => {
     } catch (error) {
       console.error("❌ Error refreshing order data:", error);
       // Don't show error to user as upload was successful
-      console.warn("Upload was successful but couldn't refresh display immediately");
+      console.warn(
+        "Upload was successful but couldn't refresh display immediately"
+      );
     }
   };
 
@@ -826,11 +849,12 @@ const OrderDetail = () => {
             {user.role === "baker" &&
               order?.stage === ORDER_STAGES.DRAFT &&
               (() => {
-                const itemsWithoutImages = order?.items?.filter(
-                  (item) =>
-                    !item.inspirationImages ||
-                    item.inspirationImages.length === 0
-                ) || [];
+                const itemsWithoutImages =
+                  order?.items?.filter(
+                    (item) =>
+                      !item.inspirationImages ||
+                      item.inspirationImages.length === 0
+                  ) || [];
                 return (
                   itemsWithoutImages.length > 0 && (
                     <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
@@ -1012,7 +1036,7 @@ const OrderDetail = () => {
       <div className="bg-white shadow rounded-lg p-6">
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-lg font-medium text-gray-900">Order Items</h3>
-          
+
           {/* Add Item Button for Bakers in Draft Stage */}
           {canAddItems() && (
             <Button
@@ -1034,246 +1058,252 @@ const OrderDetail = () => {
         <div className="space-y-6">
           {order?.items && order.items.length > 0 ? (
             order.items.map((item, index) => (
-            <div
-              key={item._id}
-              className="border border-gray-200 rounded-lg p-4"
-            >
-              <div className="flex items-center justify-between mb-4">
-                <h4 className="text-md font-medium text-gray-800">
-                  Item {index + 1}: {item.type}
-                </h4>
+              <div
+                key={item._id}
+                className="border border-gray-200 rounded-lg p-4"
+              >
+                <div className="flex items-center justify-between mb-4">
+                  <h4 className="text-md font-medium text-gray-800">
+                    Item {index + 1}: {item.type}
+                  </h4>
 
-                {canEditOrder(order, user) && (
-                  <div className="flex space-x-2">
-                    <button
-                      onClick={() => setEditingItem(item._id)}
-                      className="text-blue-600 hover:text-blue-800 text-sm"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => handleItemDelete(item._id)}
-                      className="text-red-600 hover:text-red-800 text-sm"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {editingItem === item._id ? (
-                <EditItemForm
-                  item={item}
-                  onSave={(updates) => handleItemUpdate(item._id, updates)}
-                  onCancel={() => setEditingItem(null)}
-                />
-              ) : (
-                <>
-                  {item.additionalComments && (
-                    <div className="mb-4">
-                      <h5 className="text-sm font-medium text-gray-700 mb-1">
-                        Comments:
-                      </h5>
-                      <p className="text-sm text-gray-600">
-                        {item.additionalComments}
-                      </p>
+                  {canEditOrder(order, user) && (
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={() => setEditingItem(item._id)}
+                        className="text-blue-600 hover:text-blue-800 text-sm"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleItemDelete(item._id)}
+                        className="text-red-600 hover:text-red-800 text-sm"
+                      >
+                        Delete
+                      </button>
                     </div>
                   )}
+                </div>
 
-                  {/* Inspiration Images */}
-                  <div className="mb-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <div>
-                        <h5 className="text-sm font-medium text-gray-700">
-                          Inspiration Images:
+                {editingItem === item._id ? (
+                  <EditItemForm
+                    item={item}
+                    onSave={(updates) => handleItemUpdate(item._id, updates)}
+                    onCancel={() => setEditingItem(null)}
+                  />
+                ) : (
+                  <>
+                    {item.additionalComments && (
+                      <div className="mb-4">
+                        <h5 className="text-sm font-medium text-gray-700 mb-1">
+                          Comments:
                         </h5>
-                        {canDeleteInspirationImages() && (
-                          <p className="text-xs text-gray-500 mt-1">
-                            {user.role === "baker"
-                              ? "You can upload and delete your inspiration images"
-                              : "As admin, you can delete any inspiration images"}
-                          </p>
+                        <p className="text-sm text-gray-600">
+                          {item.additionalComments}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Inspiration Images */}
+                    <div className="mb-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <div>
+                          <h5 className="text-sm font-medium text-gray-700">
+                            Inspiration Images:
+                          </h5>
+                          {canDeleteInspirationImages() && (
+                            <p className="text-xs text-gray-500 mt-1">
+                              {user.role === "baker"
+                                ? "You can upload and delete your inspiration images"
+                                : "As admin, you can delete any inspiration images"}
+                            </p>
+                          )}
+                        </div>
+                        {canUploadInspirationImages() && (
+                          <div>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              multiple
+                              onChange={(e) => {
+                                const selectedFiles = e.target.files;
+                                console.log("📁 Files selected:", {
+                                  count: selectedFiles
+                                    ? selectedFiles.length
+                                    : 0,
+                                  files: selectedFiles
+                                    ? Array.from(selectedFiles).map((f) => ({
+                                        name: f.name,
+                                        size: f.size,
+                                        type: f.type,
+                                      }))
+                                    : [],
+                                });
+
+                                if (selectedFiles && selectedFiles.length > 0) {
+                                  handleImageUpload(
+                                    selectedFiles,
+                                    item._id,
+                                    "inspiration"
+                                  );
+                                  // Reset input so same files can be selected again
+                                  e.target.value = "";
+                                } else {
+                                  console.log("❌ No files selected");
+                                }
+                              }}
+                              style={{ display: "none" }}
+                              id={`inspiration-upload-${item._id}`}
+                            />
+                            <Button
+                              variant="outline"
+                              size="small"
+                              loading={
+                                uploadingImages[`${item._id}-inspiration`]
+                              }
+                              onClick={() => {
+                                console.log(
+                                  "Upload button clicked for item:",
+                                  item._id
+                                );
+                                const input = document.getElementById(
+                                  `inspiration-upload-${item._id}`
+                                );
+                                if (input) {
+                                  input.click();
+                                } else {
+                                  console.error("File input not found");
+                                }
+                              }}
+                              disabled={
+                                uploadingImages[`${item._id}-inspiration`] ||
+                                uploadInProgressRef.current
+                              }
+                            >
+                              {uploadingImages[`${item._id}-inspiration`]
+                                ? "Uploading..."
+                                : "Upload Images"}
+                            </Button>
+                          </div>
                         )}
                       </div>
-                      {canUploadInspirationImages() && (
-                        <div>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            multiple
-                            onChange={(e) => {
-                              const selectedFiles = e.target.files;
-                              console.log("📁 Files selected:", {
-                                count: selectedFiles ? selectedFiles.length : 0,
-                                files: selectedFiles
-                                  ? Array.from(selectedFiles).map((f) => ({
-                                      name: f.name,
-                                      size: f.size,
-                                      type: f.type,
-                                    }))
-                                  : [],
-                              });
 
-                              if (selectedFiles && selectedFiles.length > 0) {
-                                handleImageUpload(
-                                  selectedFiles,
-                                  item._id,
-                                  "inspiration"
-                                );
-                                // Reset input so same files can be selected again
-                                e.target.value = "";
-                              } else {
-                                console.log("❌ No files selected");
-                              }
-                            }}
-                            style={{ display: "none" }}
-                            id={`inspiration-upload-${item._id}`}
-                          />
-                          <Button
-                            variant="outline"
-                            size="small"
-                            loading={uploadingImages[`${item._id}-inspiration`]}
-                            onClick={() => {
-                              console.log(
-                                "Upload button clicked for item:",
-                                item._id
-                              );
-                              const input = document.getElementById(
-                                `inspiration-upload-${item._id}`
-                              );
-                              if (input) {
-                                input.click();
-                              } else {
-                                console.error("File input not found");
-                              }
-                            }}
-                            disabled={
-                              uploadingImages[`${item._id}-inspiration`] ||
-                              uploadInProgressRef.current
-                            }
-                          >
-                            {uploadingImages[`${item._id}-inspiration`]
-                              ? "Uploading..."
-                              : "Upload Images"}
-                          </Button>
-                        </div>
-                      )}
+                      <ImageGallery
+                        images={item.inspirationImages}
+                        onDelete={(imageKey) =>
+                          handleImageDelete(item._id, imageKey, "inspiration")
+                        }
+                        onImageClick={(imageUrl) =>
+                          setImageModal({
+                            isOpen: true,
+                            imageUrl,
+                            imageTitle: `Inspiration Image - Item ${index + 1}`,
+                          })
+                        }
+                        canDelete={canDeleteInspirationImages()}
+                        imageType="inspiration image"
+                      />
                     </div>
 
-                    <ImageGallery
-                      images={item.inspirationImages}
-                      onDelete={(imageKey) =>
-                        handleImageDelete(item._id, imageKey, "inspiration")
-                      }
-                      onImageClick={(imageUrl) =>
-                        setImageModal({
-                          isOpen: true,
-                          imageUrl,
-                          imageTitle: `Inspiration Image - Item ${index + 1}`,
-                        })
-                      }
-                      canDelete={canDeleteInspirationImages()}
-                      imageType="inspiration image"
-                    />
-                  </div>
+                    {/* Preview Images */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <div>
+                          <h5 className="text-sm font-medium text-gray-700">
+                            Preview Images:
+                          </h5>
+                          {canDeletePreviewImages() && (
+                            <p className="text-xs text-gray-500 mt-1">
+                              As admin, you can upload and delete preview images
+                            </p>
+                          )}
+                        </div>
+                        {canUploadPreviewImages() && (
+                          <div>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              multiple
+                              onChange={(e) => {
+                                const selectedFiles = e.target.files;
+                                console.log("📁 Preview files selected:", {
+                                  count: selectedFiles
+                                    ? selectedFiles.length
+                                    : 0,
+                                  files: selectedFiles
+                                    ? Array.from(selectedFiles).map((f) => ({
+                                        name: f.name,
+                                        size: f.size,
+                                        type: f.type,
+                                      }))
+                                    : [],
+                                });
 
-                  {/* Preview Images */}
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <div>
-                        <h5 className="text-sm font-medium text-gray-700">
-                          Preview Images:
-                        </h5>
-                        {canDeletePreviewImages() && (
-                          <p className="text-xs text-gray-500 mt-1">
-                            As admin, you can upload and delete preview images
-                          </p>
+                                if (selectedFiles && selectedFiles.length > 0) {
+                                  handleImageUpload(
+                                    selectedFiles,
+                                    item._id,
+                                    "preview"
+                                  );
+                                  // Reset input so same files can be selected again
+                                  e.target.value = "";
+                                } else {
+                                  console.log("❌ No preview files selected");
+                                }
+                              }}
+                              style={{ display: "none" }}
+                              id={`preview-upload-${item._id}`}
+                            />
+                            <Button
+                              variant="outline"
+                              size="small"
+                              loading={uploadingImages[`${item._id}-preview`]}
+                              onClick={() => {
+                                console.log(
+                                  "Preview upload button clicked for item:",
+                                  item._id
+                                );
+                                const input = document.getElementById(
+                                  `preview-upload-${item._id}`
+                                );
+                                if (input) {
+                                  input.click();
+                                } else {
+                                  console.error("Preview file input not found");
+                                }
+                              }}
+                              disabled={
+                                uploadingImages[`${item._id}-preview`] ||
+                                uploadInProgressRef.current
+                              }
+                            >
+                              {uploadingImages[`${item._id}-preview`]
+                                ? "Uploading..."
+                                : "Upload Previews"}
+                            </Button>
+                          </div>
                         )}
                       </div>
-                      {canUploadPreviewImages() && (
-                        <div>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            multiple
-                            onChange={(e) => {
-                              const selectedFiles = e.target.files;
-                              console.log("📁 Preview files selected:", {
-                                count: selectedFiles ? selectedFiles.length : 0,
-                                files: selectedFiles
-                                  ? Array.from(selectedFiles).map((f) => ({
-                                      name: f.name,
-                                      size: f.size,
-                                      type: f.type,
-                                    }))
-                                  : [],
-                              });
 
-                              if (selectedFiles && selectedFiles.length > 0) {
-                                handleImageUpload(
-                                  selectedFiles,
-                                  item._id,
-                                  "preview"
-                                );
-                                // Reset input so same files can be selected again
-                                e.target.value = "";
-                              } else {
-                                console.log("❌ No preview files selected");
-                              }
-                            }}
-                            style={{ display: "none" }}
-                            id={`preview-upload-${item._id}`}
-                          />
-                          <Button
-                            variant="outline"
-                            size="small"
-                            loading={uploadingImages[`${item._id}-preview`]}
-                            onClick={() => {
-                              console.log(
-                                "Preview upload button clicked for item:",
-                                item._id
-                              );
-                              const input = document.getElementById(
-                                `preview-upload-${item._id}`
-                              );
-                              if (input) {
-                                input.click();
-                              } else {
-                                console.error("Preview file input not found");
-                              }
-                            }}
-                            disabled={
-                              uploadingImages[`${item._id}-preview`] ||
-                              uploadInProgressRef.current
-                            }
-                          >
-                            {uploadingImages[`${item._id}-preview`]
-                              ? "Uploading..."
-                              : "Upload Previews"}
-                          </Button>
-                        </div>
-                      )}
+                      <ImageGallery
+                        images={item.previewImages}
+                        onDelete={(imageKey) =>
+                          handleImageDelete(item._id, imageKey, "preview")
+                        }
+                        onImageClick={(imageUrl) =>
+                          setImageModal({
+                            isOpen: true,
+                            imageUrl,
+                            imageTitle: `Preview Image - Item ${index + 1}`,
+                          })
+                        }
+                        canDelete={canDeletePreviewImages()}
+                        imageType="preview image"
+                      />
                     </div>
-
-                    <ImageGallery
-                      images={item.previewImages}
-                      onDelete={(imageKey) =>
-                        handleImageDelete(item._id, imageKey, "preview")
-                      }
-                      onImageClick={(imageUrl) =>
-                        setImageModal({
-                          isOpen: true,
-                          imageUrl,
-                          imageTitle: `Preview Image - Item ${index + 1}`,
-                        })
-                      }
-                      canDelete={canDeletePreviewImages()}
-                      imageType="preview image"
-                    />
-                  </div>
-                </>
-              )}
-            </div>
+                  </>
+                )}
+              </div>
             ))
           ) : (
             <div className="text-center py-8">
@@ -1532,6 +1562,8 @@ const OrderDetail = () => {
           </div>
         </div>
       </Modal>
+
+      {/* Image Modal */}
       <Modal
         isOpen={imageModal.isOpen}
         onClose={() =>
