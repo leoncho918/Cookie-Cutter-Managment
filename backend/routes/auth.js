@@ -10,7 +10,7 @@ const { authenticateToken } = require("../middleware/auth");
 
 const router = express.Router();
 
-// Login endpoint
+// Login endpoint - Updated to handle first login enforcement
 router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -40,6 +40,7 @@ router.post("/login", async (req, res) => {
       { expiresIn: "24h" }
     );
 
+    // IMPORTANT: Include isFirstLogin in response
     res.json({
       token,
       user: {
@@ -47,8 +48,14 @@ router.post("/login", async (req, res) => {
         email: user.email,
         role: user.role,
         bakerId: user.bakerId,
-        isFirstLogin: user.isFirstLogin,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        phoneNumber: user.phoneNumber,
+        isFirstLogin: user.isFirstLogin, // ← Make sure this is included
+        isActive: user.isActive,
       },
+      // Add a flag to indicate if password change is required
+      requiresPasswordChange: user.isFirstLogin,
     });
   } catch (error) {
     console.error("Login error:", error);

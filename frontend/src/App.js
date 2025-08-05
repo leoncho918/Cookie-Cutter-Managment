@@ -34,6 +34,11 @@ const ProtectedRoute = ({ children, adminOnly = false }) => {
     return <Navigate to="/login" />;
   }
 
+  // ENFORCE first login password change
+  if (user.isFirstLogin) {
+    return <Navigate to="/first-login" />;
+  }
+
   if (adminOnly && user.role !== "admin") {
     return <Navigate to="/dashboard" />;
   }
@@ -62,6 +67,7 @@ const AppLayout = ({ children }) => {
 const FirstLoginHandler = () => {
   const { user } = useAuth();
 
+  // Always redirect to change password if it's first login
   if (user?.isFirstLogin) {
     return <ChangePassword isFirstLogin={true} />;
   }

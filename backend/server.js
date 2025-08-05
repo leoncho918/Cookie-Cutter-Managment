@@ -9,7 +9,10 @@ const authRoutes = require("./routes/auth");
 const userRoutes = require("./routes/users");
 const orderRoutes = require("./routes/orders");
 const uploadRoutes = require("./routes/upload");
-const { authenticateToken } = require("./middleware/auth");
+const {
+  authenticateToken,
+  requirePasswordChange,
+} = require("./middleware/auth");
 const { authenticateSocket } = require("./middleware/socketAuth");
 
 dotenv.config();
@@ -216,10 +219,11 @@ function getUserCounts() {
 }
 
 // Routes
+app.use("/api/users", authenticateToken, requirePasswordChange, userRoutes);
+app.use("/api/orders", authenticateToken, requirePasswordChange, orderRoutes);
+app.use("/api/upload", authenticateToken, requirePasswordChange, uploadRoutes);
+
 app.use("/api/auth", authRoutes);
-app.use("/api/users", authenticateToken, userRoutes);
-app.use("/api/orders", authenticateToken, orderRoutes);
-app.use("/api/upload", authenticateToken, uploadRoutes);
 
 // Health check
 app.get("/api/health", (req, res) => {

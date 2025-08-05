@@ -47,8 +47,30 @@ const requireBakerOrAdmin = (req, res, next) => {
   next();
 };
 
+// Check if user needs to change password on first login
+const requirePasswordChange = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.user._id).select("-password");
+
+    if (user && user.isFirstLogin) {
+      return res.status(403).json({
+        message: "Password change required",
+        requiresPasswordChange: true,
+        isFirstLogin: true,
+      });
+    }
+
+    next();
+  } catch (error) {
+    return res
+      .status(500)
+      .json({ message: "Server error checking user status" });
+  }
+};
+
 module.exports = {
   authenticateToken,
   requireAdmin,
   requireBakerOrAdmin,
+  requirePasswordChange,
 };

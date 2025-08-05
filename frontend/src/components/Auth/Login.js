@@ -46,10 +46,18 @@ const Login = () => {
     try {
       const result = await login(formData.email, formData.password);
 
-      if (!result.success) {
+      if (result.success) {
+        // Check if password change is required
+        if (result.requiresPasswordChange || result.user.isFirstLogin) {
+          // Redirect will be handled by ProtectedRoute in App.js
+          window.location.href = "/first-login";
+        } else {
+          // Normal login, redirect will be handled by App.js
+          window.location.href = "/dashboard";
+        }
+      } else {
         showError(result.message);
       }
-      // Success will be handled by the redirect in the component
     } catch (error) {
       showError("An unexpected error occurred");
     } finally {

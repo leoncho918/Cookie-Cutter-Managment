@@ -22,6 +22,27 @@ export const AuthProvider = ({ children }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [token, setToken] = useState(localStorage.getItem("token"));
 
+  // Add axios interceptor to handle first login enforcement
+  useEffect(() => {
+    const interceptor = axios.interceptors.response.use(
+      (response) => response,
+      (error) => {
+        if (
+          error.response?.status === 403 &&
+          error.response?.data?.requiresPasswordChange
+        ) {
+          // Force redirect to password change
+          window.location.href = "/first-login";
+        }
+        return Promise.reject(error);
+      }
+    );
+
+    return () => {
+      axios.interceptors.response.eject(interceptor);
+    };
+  }, []);
+
   // Set auth token in axios headers
   useEffect(() => {
     if (token) {
@@ -59,17 +80,25 @@ export const AuthProvider = ({ children }) => {
     checkAuth();
   }, []);
 
-  // Login function
+  // Login function - Updated to handle first login enforcement
   const login = async (email, password) => {
     try {
       const response = await axios.post("/auth/login", { email, password });
-      const { token: newToken, user: userData } = response.data;
+      const {
+        token: newToken,
+        user: userData,
+        requiresPasswordChange,
+      } = response.data;
 
       localStorage.setItem("token", newToken);
       setToken(newToken);
       setUser(userData);
 
-      return { success: true, user: userData };
+      return {
+        success: true,
+        user: userData,
+        requiresPasswordChange, // ← Pass this to the frontend
+      };
     } catch (error) {
       console.error("Login error:", error);
       return {
@@ -125,6 +154,23 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // Check if user needs to change password (for existing sessions)
+  const checkPasswordChangeRequired = async () => {
+    try {
+      // Make a request to any protected endpoint to check status
+      await axios.get("/users/profile");
+      return false; // If successful, no password change required
+    } catch (error) {
+      if (
+        error.response?.status === 403 &&
+        error.response?.data?.requiresPasswordChange
+      ) {
+        return true; // Password change required
+      }
+      return false;
+    }
+  };
+
   const value = {
     user,
     token,
@@ -133,6 +179,7 @@ export const AuthProvider = ({ children }) => {
     logout,
     changePassword,
     resetPassword,
+    checkPasswordChangeRequired,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
