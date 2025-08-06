@@ -285,6 +285,18 @@ export const formatDate = (date) => {
   });
 };
 
+// Format date for display
+export const formatDateTime = (date) => {
+  return new Date(date).toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+};
+
 // Format date for input field
 export const formatDateForInput = (date) => {
   return new Date(date).toISOString().split("T")[0];

@@ -17,6 +17,7 @@ import {
   getNextAllowedStages,
   canEditOrder,
   canDeleteOrder,
+  formatDateTime,
 } from "../../utils/orderHelpers";
 import LoadingSpinner from "../UI/LoadingSpinner";
 import Button from "../UI/Button";
@@ -997,7 +998,7 @@ const OrderDetail = () => {
                 Created:
               </span>
               <span className="text-sm text-gray-900">
-                {formatDate(order.createdAt)}
+                {formatDateTime(order.createdAt)}
               </span>
             </div>
 
@@ -1053,7 +1054,7 @@ const OrderDetail = () => {
                       {history.stage}
                     </div>
                     <div className="text-xs text-gray-500">
-                      {formatDate(history.changedAt)}
+                      {formatDateTime(history.changedAt)}
                     </div>
                     {history.comments && (
                       <div className="text-sm text-gray-600 mt-1">
