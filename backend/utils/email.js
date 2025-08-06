@@ -38,9 +38,9 @@ const sendAccountCreationEmail = async (
   const mailOptions = {
     from: process.env.EMAIL_USER,
     to: email,
-    subject: "Welcome to Cookie Cutter Order Management System",
+    subject: "Welcome to the Cookie Cutter Ordering System",
     html: `
-      <h2>Welcome to Cookie Cutter Orders!</h2>
+      <h2>Welcome to Cookie Cutter Ordering System!</h2>
       ${firstName ? `<p>Hello ${fullName},</p>` : ""}
       <p>Your baker account has been created with the following credentials:</p>
       <ul>
@@ -78,7 +78,7 @@ const sendPasswordResetEmail = async (email, temporaryPassword) => {
   const mailOptions = {
     from: process.env.EMAIL_USER,
     to: email,
-    subject: "Password Reset - Cookie Cutter Order Management",
+    subject: "Password Reset - Cookie Cutter Ordering System",
     html: `
             <h2>Password Reset Request</h2>
             <p>Your password has been reset. Please use the following temporary password to log in:</p>
@@ -86,7 +86,7 @@ const sendPasswordResetEmail = async (email, temporaryPassword) => {
             <p><strong>Important:</strong> You will be required to change this password on your next login.</p>
             <p>If you did not request this password reset, please contact the administrator immediately.</p>
             <br>
-            <p>Best regards,<br>Cookie Cutter Order Management Team</p>
+            <p>Best regards,<br>Leon</p>
         `,
   };
 
@@ -135,7 +135,7 @@ const sendOrderStageChangeEmail = async (
             ${comments ? `<p><strong>Comments:</strong> ${comments}</p>` : ""}
             <p>Please log in to the system to view your order details and take any necessary actions.</p>
             <br>
-            <p>Best regards,<br>Cookie Cutter Order Management Team</p>
+            <p>Best regards,<br>Leon</p>
         `,
   };
 
