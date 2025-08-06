@@ -964,7 +964,7 @@ const OrderDetail = () => {
                     })
                   }
                 >
-                  Set Completion Details
+                  Confirm Details
                 </Button>
               )}
           </div>
