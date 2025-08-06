@@ -73,7 +73,7 @@ export const getNextAllowedStages = (currentStage, userRole) => {
         ORDER_STAGES.READY_TO_PRINT,
         ORDER_STAGES.REQUESTED_CHANGES,
       ], // Baker approves
-      [ORDER_STAGES.REQUESTED_CHANGES]: [], // Wait for admin to make changes
+      [ORDER_STAGES.REQUESTED_CHANGES]: [ORDER_STAGES.SUBMITTED], // Wait for admin to make changes
       [ORDER_STAGES.READY_TO_PRINT]: [], // Only admin can move to printing
       [ORDER_STAGES.PRINTING]: [], // Only admin can mark as completed
       [ORDER_STAGES.COMPLETED]: [], // Final stage
