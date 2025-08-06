@@ -1,14 +1,19 @@
-// backend/server.js - FIXED routes configuration to properly handle first login
+// backend/server.js - Complete server with all routes including pickup
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
 const dotenv = require("dotenv");
 const http = require("http");
 const socketIo = require("socket.io");
+
+// Route imports
 const authRoutes = require("./routes/auth");
 const userRoutes = require("./routes/users");
 const orderRoutes = require("./routes/orders");
 const uploadRoutes = require("./routes/upload");
+const pickupRoutes = require("./routes/pickup");
+
+// Middleware imports
 const {
   authenticateToken,
   requirePasswordChange,
@@ -30,7 +35,6 @@ const io = socketIo(server, {
     ],
     methods: ["GET", "POST"],
     credentials: true,
-    allowedHeaders: ["my-custom-header"],
   },
   transports: ["websocket", "polling"],
   allowEIO3: true,
@@ -97,12 +101,10 @@ io.on("connection", (socket) => {
   // Join user to their role-based room
   const userRoom = `${socket.user.role}s`;
   socket.join(userRoom);
-  console.log(`👥 User joined role room: ${userRoom}`);
 
   // Join baker to their specific room
   if (socket.user.role === "baker") {
     socket.join(`baker-${socket.user.bakerId}`);
-    console.log(`👤 Baker joined specific room: baker-${socket.user.bakerId}`);
   }
 
   // Join admin to all rooms for monitoring
@@ -110,14 +112,11 @@ io.on("connection", (socket) => {
     socket.join("admins");
     socket.join("bakers");
     socket.join("all-orders");
-    console.log("👑 Admin joined monitoring rooms: admins, bakers, all-orders");
   }
 
   // Join general rooms for order list updates
   socket.join("orders-list");
   socket.join("dashboard-updates");
-
-  console.log("👥 User joined all rooms:", Array.from(socket.rooms));
 
   // Send connection confirmation
   socket.emit("connection-status", {
@@ -157,10 +156,7 @@ io.on("connection", (socket) => {
       console.log(
         `📋 User ${socket.user.email} joined order room: order-${orderId}`
       );
-      socket.emit("room-joined", {
-        room: `order-${orderId}`,
-        orderId,
-      });
+      socket.emit("room-joined", { room: `order-${orderId}`, orderId });
     }
   });
 
@@ -171,10 +167,7 @@ io.on("connection", (socket) => {
       console.log(
         `📋 User ${socket.user.email} left order room: order-${orderId}`
       );
-      socket.emit("room-left", {
-        room: `order-${orderId}`,
-        orderId,
-      });
+      socket.emit("room-left", { room: `order-${orderId}`, orderId });
     }
   });
 
@@ -211,11 +204,11 @@ function getUserCounts() {
   };
 }
 
-// FIXED Routes configuration
+// Route configuration
 // Auth routes (no password change middleware needed)
 app.use("/api/auth", authRoutes);
 
-// IMPORTANT: Configure user routes with selective password change middleware
+// User routes with selective password change middleware
 app.use(
   "/api/users",
   authenticateToken,
@@ -233,15 +226,55 @@ app.use(
 // Other protected routes with password change middleware
 app.use("/api/orders", authenticateToken, requirePasswordChange, orderRoutes);
 app.use("/api/upload", authenticateToken, requirePasswordChange, uploadRoutes);
+app.use("/api/pickup", authenticateToken, requirePasswordChange, pickupRoutes);
 
-// Health check
+// Health check endpoint
 app.get("/api/health", (req, res) => {
   res.json({
-    message: "Server is running",
+    message: "Cookie Cutter Order Management System - Server Running",
     timestamp: new Date().toISOString(),
     socketConnections: connectedUsers.size,
     environment: process.env.NODE_ENV || "development",
     uptime: process.uptime(),
+    version: "1.0.0",
+    features: {
+      orders: "✅ Order management",
+      users: "✅ User management",
+      images: "✅ Image upload (S3)",
+      realtime: "✅ Socket.IO",
+      pickup: "✅ Pickup scheduling",
+      email: "✅ Email notifications",
+    },
+  });
+});
+
+// Pickup location info endpoint (public for bakers)
+app.get("/api/pickup/info", (req, res) => {
+  res.json({
+    success: true,
+    data: {
+      address: {
+        street: "40A Brancourt Ave",
+        suburb: "Bankstown",
+        state: "NSW",
+        postcode: "2200",
+        country: "Australia",
+        full: "40A Brancourt Ave, Bankstown NSW 2200, Australia",
+      },
+      businessHours: {
+        monday: "9:00 AM - 5:00 PM",
+        tuesday: "9:00 AM - 5:00 PM",
+        wednesday: "9:00 AM - 5:00 PM",
+        thursday: "9:00 AM - 5:00 PM",
+        friday: "9:00 AM - 5:00 PM",
+        saturday: "10:00 AM - 2:00 PM",
+        sunday: "Closed",
+      },
+      contact: {
+        phone: "+61 2 9000 0000",
+        email: "pickup@cookiecutter.com",
+      },
+    },
   });
 });
 
@@ -282,6 +315,39 @@ app.get("/api/test-socket", authenticateToken, (req, res) => {
   });
 });
 
+// System status endpoint
+app.get("/api/status", authenticateToken, (req, res) => {
+  res.json({
+    system: "Cookie Cutter Order Management System",
+    version: "1.0.0",
+    status: "operational",
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    environment: process.env.NODE_ENV || "development",
+    database:
+      mongoose.connection.readyState === 1 ? "connected" : "disconnected",
+    realtime: {
+      socketio: "active",
+      connectedUsers: connectedUsers.size,
+      rooms: Array.from(io.sockets.adapter.rooms.keys()).length,
+    },
+    features: {
+      authentication: "✅ JWT-based auth",
+      userManagement: "✅ Admin manages bakers",
+      orderManagement: "✅ Full order lifecycle",
+      imageUpload: "✅ S3 integration",
+      emailNotifications: "✅ Nodemailer",
+      pickupScheduling: "✅ Date/time booking",
+      realtimeUpdates: "✅ Socket.IO",
+    },
+    pickup: {
+      address: "40A Brancourt Ave, Bankstown NSW 2200",
+      businessHours: "Mon-Fri 9AM-5PM, Sat 10AM-2PM",
+      scheduling: "Available",
+    },
+  });
+});
+
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error("❌ Server error:", err.stack);
@@ -300,7 +366,7 @@ app.use((req, res) => {
   });
 });
 
-// Graceful shutdown
+// Graceful shutdown handlers
 const gracefulShutdown = () => {
   console.log("🛑 Received shutdown signal, shutting down gracefully");
 
@@ -334,13 +400,26 @@ process.on("unhandledRejection", (reason, promise) => {
   gracefulShutdown();
 });
 
+// Start the server
 server.listen(PORT, () => {
-  console.log(`🚀 Server is running on port ${PORT}`);
+  console.log("🍪 ================================================");
+  console.log("🍪 Cookie Cutter Order Management System");
+  console.log("🍪 ================================================");
+  console.log(`🚀 Server running on port ${PORT}`);
   console.log(`🔌 Socket.IO enabled for real-time updates`);
   console.log(
     `📡 Frontend URL: ${process.env.FRONTEND_URL || "http://localhost:3000"}`
   );
   console.log(`🌐 Environment: ${process.env.NODE_ENV || "development"}`);
+  console.log(`📍 Pickup Location: 40A Brancourt Ave, Bankstown NSW 2200`);
+  console.log("🍪 ================================================");
+  console.log("✅ System Ready - Bakers can now create orders!");
+  console.log("✅ Admin can manage users and orders");
+  console.log("✅ Real-time updates active");
+  console.log("✅ Image upload to S3 configured");
+  console.log("✅ Email notifications ready");
+  console.log("✅ Pickup scheduling available");
+  console.log("🍪 ================================================");
 });
 
 module.exports = { app, io, server };

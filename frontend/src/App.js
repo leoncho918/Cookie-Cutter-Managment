@@ -1,5 +1,5 @@
-// frontend/src/App.js - FIXED App component with proper first login handling
-import React, { useState, useEffect } from "react";
+// frontend/src/App.js - Complete App component with all routing
+import React, { useState } from "react";
 import {
   BrowserRouter as Router,
   Routes,
@@ -18,11 +18,12 @@ import Orders from "./components/Orders/Orders";
 import OrderDetail from "./components/Orders/OrderDetail";
 import CreateOrder from "./components/Orders/CreateOrder";
 import UserManagement from "./components/Admin/UserManagement";
+import ProfileManagement from "./components/Profile/ProfileManagement";
 import LoadingSpinner from "./components/UI/LoadingSpinner";
 import Toast from "./components/UI/Toast";
 import "./App.css";
 
-// FIXED: Protected Route Component with proper first login enforcement
+// Protected Route Component with proper first login enforcement
 const ProtectedRoute = ({ children, adminOnly = false }) => {
   const { user, isLoading } = useAuth();
 
@@ -38,17 +39,8 @@ const ProtectedRoute = ({ children, adminOnly = false }) => {
     return <Navigate to="/login" replace />;
   }
 
-  // CRITICAL: Check for first login requirement
-  console.log("🔍 ProtectedRoute check:", {
-    email: user.email,
-    isFirstLogin: user.isFirstLogin,
-    currentPath: window.location.pathname,
-  });
-
+  // Check for first login requirement
   if (user.isFirstLogin) {
-    console.log(
-      "🚨 User needs to change password - redirecting to first-login"
-    );
     return <Navigate to="/first-login" replace />;
   }
 
@@ -76,7 +68,7 @@ const AppLayout = ({ children }) => {
   );
 };
 
-// FIXED: First Login Handler Component
+// First Login Handler Component
 const FirstLoginHandler = () => {
   const { user, isLoading } = useAuth();
 
@@ -89,19 +81,14 @@ const FirstLoginHandler = () => {
   }
 
   if (!user) {
-    console.log("🚨 No user found in FirstLoginHandler - redirecting to login");
     return <Navigate to="/login" replace />;
   }
 
   // If user is NOT on first login, redirect to dashboard
   if (!user.isFirstLogin) {
-    console.log(
-      "✅ User has already changed password - redirecting to dashboard"
-    );
     return <Navigate to="/dashboard" replace />;
   }
 
-  console.log("🔒 Showing password change form for first login");
   return <ChangePassword isFirstLogin={true} />;
 };
 
@@ -122,7 +109,7 @@ function App() {
   );
 }
 
-// FIXED: App Content Component with better routing logic
+// App Content Component with routing logic
 const AppContent = () => {
   const { user, isLoading } = useAuth();
 
@@ -153,7 +140,7 @@ const AppContent = () => {
           }
         />
 
-        {/* First Login Route - CRITICAL for password changes */}
+        {/* First Login Route */}
         <Route path="/first-login" element={<FirstLoginHandler />} />
 
         {/* Protected Routes */}
@@ -196,6 +183,17 @@ const AppContent = () => {
             <ProtectedRoute>
               <AppLayout>
                 <Orders />
+              </AppLayout>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/profile"
+          element={
+            <ProtectedRoute>
+              <AppLayout>
+                <ProfileManagement />
               </AppLayout>
             </ProtectedRoute>
           }
