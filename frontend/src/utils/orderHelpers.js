@@ -285,7 +285,7 @@ export const formatDate = (date) => {
   });
 };
 
-// Format date for display
+// Format date and time for display
 export const formatDateTime = (date) => {
   return new Date(date).toLocaleDateString("en-GB", {
     day: "2-digit",
