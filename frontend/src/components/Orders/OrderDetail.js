@@ -23,7 +23,9 @@ import {
 import LoadingSpinner from "../UI/LoadingSpinner";
 import Button from "../UI/Button";
 import Modal from "../UI/Modal";
+import PickupDetails from "./PickupDetails";
 import axios from "axios";
+import CompletionModal from "./CompletionModal";
 
 const OrderDetail = () => {
   const { id } = useParams();
@@ -68,6 +70,7 @@ const OrderDetail = () => {
     pickupTime: "",
     pickupNotes: "",
   });
+  const [showPickupDetails, setShowPickupDetails] = useState(false);
   const [uploadingImages, setUploadingImages] = useState({});
   const [addItemModal, setAddItemModal] = useState({
     isOpen: false,
@@ -742,6 +745,138 @@ const OrderDetail = () => {
     );
   };
 
+  const renderCompletionDetails = () => {
+    if (order.stage !== ORDER_STAGES.COMPLETED) return null;
+
+    return (
+      <div className="mt-6 pt-4 border-t border-gray-200">
+        <h4 className="text-sm font-medium text-gray-700 mb-3">
+          Completion Details
+        </h4>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="flex items-center">
+            <span className="text-2xl mr-3">
+              {order.deliveryMethod === "Pickup" ? "🚶" : "🚚"}
+            </span>
+            <div>
+              <div className="text-sm font-medium text-gray-700">
+                Delivery Method:
+              </div>
+              <div className="text-sm text-gray-900">
+                {order.deliveryMethod || "Not specified"}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center">
+            <span className="text-2xl mr-3">
+              {order.paymentMethod === "Cash" ? "💵" : "💳"}
+            </span>
+            <div>
+              <div className="text-sm font-medium text-gray-700">
+                Payment Method:
+              </div>
+              <div className="text-sm text-gray-900">
+                {order.paymentMethod || "Not specified"}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Pickup Schedule Details */}
+        {order.deliveryMethod === "Pickup" && (
+          <div className="mt-6">
+            {order.pickupSchedule &&
+            order.pickupSchedule.date &&
+            order.pickupSchedule.time ? (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h5 className="text-sm font-medium text-blue-800 mb-2">
+                      📅 Scheduled Pickup
+                    </h5>
+                    <div className="text-blue-700 space-y-1">
+                      <div className="font-semibold">
+                        {new Date(order.pickupSchedule.date).toLocaleDateString(
+                          "en-AU",
+                          {
+                            weekday: "long",
+                            day: "2-digit",
+                            month: "2-digit",
+                            year: "numeric",
+                          }
+                        )}{" "}
+                        at {order.pickupSchedule.time}
+                      </div>
+                      <div className="text-sm">
+                        📍 40A Brancourt Ave, Bankstown NSW 2200
+                      </div>
+                      {order.pickupSchedule.notes && (
+                        <div className="text-sm mt-2">
+                          <strong>Notes:</strong> {order.pickupSchedule.notes}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="small"
+                    onClick={() => setShowPickupDetails(true)}
+                    className="text-blue-600 border-blue-300 hover:bg-blue-50"
+                  >
+                    📍 View Location & Map
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                <div className="flex items-center">
+                  <span className="text-yellow-600 text-xl mr-3">⚠️</span>
+                  <div>
+                    <h5 className="text-sm font-medium text-yellow-800">
+                      Pickup Schedule Needed
+                    </h5>
+                    <p className="text-yellow-700 text-sm">
+                      Please set your pickup date and time to complete the order
+                      process.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Action button for bakers to update details */}
+        {user.role === "baker" && order.bakerId === user.bakerId && (
+          <div className="mt-4">
+            <Button
+              variant="primary"
+              size="small"
+              onClick={() =>
+                setCompletionModal({
+                  isOpen: true,
+                  deliveryMethod: order.deliveryMethod || "",
+                  paymentMethod: order.paymentMethod || "",
+                  pickupDate: order.pickupSchedule?.date
+                    ? formatDateForInput(order.pickupSchedule.date)
+                    : "",
+                  pickupTime: order.pickupSchedule?.time || "",
+                  pickupNotes: order.pickupSchedule?.notes || "",
+                })
+              }
+            >
+              {order.deliveryMethod && order.paymentMethod
+                ? "Update Completion Details"
+                : "Set Completion Details"}
+            </Button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -978,97 +1113,7 @@ const OrderDetail = () => {
         )}
 
         {/* Completion Details */}
-        {order.stage === ORDER_STAGES.COMPLETED && (
-          <div className="mt-6 pt-4 border-t border-gray-200">
-            <h4 className="text-sm font-medium text-gray-700 mb-3">
-              Completion Details
-            </h4>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <span className="text-sm font-medium text-gray-700">
-                  Delivery Method:
-                </span>
-                <span className="ml-2 text-sm text-gray-900">
-                  {order.deliveryMethod || "Not specified"}
-                </span>
-              </div>
-              <div>
-                <span className="text-sm font-medium text-gray-700">
-                  Payment Method:
-                </span>
-                <span className="ml-2 text-sm text-gray-900">
-                  {order.paymentMethod || "Not specified"}
-                </span>
-              </div>
-            </div>
-
-            {/* Pickup Schedule Details */}
-            {order.deliveryMethod === "Pickup" && order.pickupSchedule && (
-              <div className="mt-4 p-4 bg-blue-50 rounded-lg">
-                <h5 className="text-sm font-medium text-blue-800 mb-2">
-                  📅 Pickup Schedule
-                </h5>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div>
-                    <span className="text-sm font-medium text-blue-700">
-                      Date:
-                    </span>
-                    <span className="ml-2 text-sm text-blue-900">
-                      {order.pickupSchedule.date
-                        ? formatDate(order.pickupSchedule.date)
-                        : "Not scheduled"}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-sm font-medium text-blue-700">
-                      Time:
-                    </span>
-                    <span className="ml-2 text-sm text-blue-900">
-                      {order.pickupSchedule.time || "Not specified"}
-                    </span>
-                  </div>
-                </div>
-                {order.pickupSchedule.notes && (
-                  <div className="mt-2">
-                    <span className="text-sm font-medium text-blue-700">
-                      Notes:
-                    </span>
-                    <p className="text-sm text-blue-900 mt-1">
-                      {order.pickupSchedule.notes}
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {user.role === "baker" &&
-              order.bakerId === user.bakerId &&
-              (!order.deliveryMethod || !order.paymentMethod) && (
-                <Button
-                  variant="primary"
-                  size="small"
-                  className="mt-3"
-                  onClick={() =>
-                    setCompletionModal({
-                      isOpen: true,
-                      deliveryMethod: order.deliveryMethod || "",
-                      paymentMethod: order.paymentMethod || "",
-                      pickupDate: order.pickupSchedule?.date
-                        ? formatDateForInput(order.pickupSchedule.date)
-                        : "",
-                      pickupTime: order.pickupSchedule?.time || "",
-                      pickupNotes: order.pickupSchedule?.notes || "",
-                    })
-                  }
-                >
-                  {order.deliveryMethod && order.paymentMethod
-                    ? "Update Details"
-                    : "Confirm Details"}
-                </Button>
-              )}
-          </div>
-        )}
+        {renderCompletionDetails()}
       </div>
 
       {/* Order Information */}
@@ -1998,6 +2043,21 @@ const OrderDetail = () => {
             Open Full Size
           </Button>
         </div>
+      </Modal>
+
+      {/* Enhanced Completion Modal */}
+
+      {/* Pickup Details Modal */}
+      <Modal
+        isOpen={showPickupDetails}
+        onClose={() => setShowPickupDetails(false)}
+        title="Pickup Information"
+        size="xlarge"
+      >
+        <PickupDetails
+          order={order}
+          onClose={() => setShowPickupDetails(false)}
+        />
       </Modal>
     </div>
   );

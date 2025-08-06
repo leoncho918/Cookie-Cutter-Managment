@@ -13,23 +13,23 @@ const PICKUP_CONFIG = {
     longitude: 151.0351,
   },
   businessHours: {
-    monday: { open: "09:00", close: "17:00" },
-    tuesday: { open: "09:00", close: "17:00" },
-    wednesday: { open: "09:00", close: "17:00" },
-    thursday: { open: "09:00", close: "17:00" },
-    friday: { open: "09:00", close: "17:00" },
-    saturday: { open: "10:00", close: "14:00" },
-    sunday: { closed: true },
+    monday: { open: "09:00", close: "23:59" },
+    tuesday: { open: "09:00", close: "23:59" },
+    wednesday: { open: "09:00", close: "23:59" },
+    thursday: { open: "09:00", close: "23:59" },
+    friday: { open: "09:00", close: "23:59" },
+    saturday: { open: "09:00", close: "23:59" },
+    sunday: { open: "09:00", close: "23:59" },
   },
   contact: {
-    phone: "+61 2 9000 0000", // Update with actual phone number
-    email: "pickup@cookiecutter.com", // Update with actual email
+    phone: "+61 423 038 401", // Update with actual phone number
+    email: "leoncho918@gmail.com", // Update with actual email
   },
   instructions: [
-    "Please bring photo ID for pickup verification",
+    "Please call before you start making your way",
     "Call ahead if you're running late",
-    "Park in visitor parking spaces",
-    "Ring the doorbell at unit 40A",
+    "Drive down the driveway and park in the front yard",
+    "Ring the doorbell at the front door",
   ],
   // Google Maps embed URL
   mapEmbedUrl:

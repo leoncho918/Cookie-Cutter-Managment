@@ -16,23 +16,23 @@ const PickupDetails = ({ order, onClose }) => {
       full: "40A Brancourt Ave, Bankstown NSW 2200, Australia",
     },
     contact: {
-      phone: "+61 2 9000 0000",
-      email: "pickup@cookiecutter.com",
+      phone: "+61 423 038 401",
+      email: "leoncho918@gmail.com",
     },
     businessHours: {
-      monday: "9:00 AM - 5:00 PM",
-      tuesday: "9:00 AM - 5:00 PM",
-      wednesday: "9:00 AM - 5:00 PM",
-      thursday: "9:00 AM - 5:00 PM",
-      friday: "9:00 AM - 5:00 PM",
-      saturday: "10:00 AM - 2:00 PM",
-      sunday: "Closed",
+      monday: "9:00 AM - 11:59 PM",
+      tuesday: "9:00 AM - 11:59 PM",
+      wednesday: "9:00 AM - 11:59 PM",
+      thursday: "9:00 AM - 11:59 PM",
+      friday: "9:00 AM - 11:59 PM",
+      saturday: "9:00 AM - 11:59 PM",
+      sunday: "9:00 AM - 11:59 PM",
     },
     instructions: [
-      "Please bring photo ID for pickup verification",
+      "Please call before you start making your way",
       "Call ahead if you're running late",
-      "Park in visitor parking spaces",
-      "Ring the doorbell at unit 40A",
+      "Drive down the driveway and park in the front yard",
+      "Ring the doorbell at the front door",
     ],
   };
 
@@ -234,23 +234,23 @@ const PickupDetails = ({ order, onClose }) => {
         <div className="text-center">
           <div className="border-2 border-dashed border-gray-300 rounded-lg p-6">
             <div className="text-gray-500">
-              <span className="text-4xl block mb-2">🏢</span>
+              {/* <span className="text-4xl block mb-2">🏢</span>
               <p className="text-sm">Location photo will be displayed here</p>
               <p className="text-xs mt-1 text-gray-400">
                 Place your location image in: <br />
                 <code>frontend/public/images/pickup-location.png</code>
-              </p>
+              </p> */}
             </div>
+            {/* This will show the actual image once placed */}
+            <img
+              src="/images/pickup-location.png"
+              alt="Pickup Location"
+              className="mt-4 rounded-lg border border-gray-200 w-full max-w-md mx-auto"
+              onError={(e) => {
+                e.target.style.display = "none";
+              }}
+            />
           </div>
-          {/* This will show the actual image once placed */}
-          <img
-            src="/images/pickup-location.png"
-            alt="Pickup Location"
-            className="mt-4 rounded-lg border border-gray-200 w-full max-w-md mx-auto"
-            onError={(e) => {
-              e.target.style.display = "none";
-            }}
-          />
         </div>
       </div>
 

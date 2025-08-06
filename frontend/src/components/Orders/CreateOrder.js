@@ -398,16 +398,6 @@ const CreateOrder = () => {
 
             <div className="flex space-x-3">
               <Button
-                type="button"
-                variant="outline"
-                onClick={handleSaveDraft}
-                loading={loading}
-                disabled={loading}
-              >
-                Save as Draft
-              </Button>
-
-              <Button
                 type="submit"
                 variant="primary"
                 loading={loading}
