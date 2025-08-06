@@ -117,11 +117,11 @@ const orderSchema = new mongoose.Schema({
     },
     state: {
       type: String,
-      maxlength: 50,
+      maxlength: 100, // Increased for international states/provinces
     },
     postcode: {
       type: String,
-      maxlength: 10,
+      maxlength: 20, // Increased for international postal codes
     },
     country: {
       type: String,

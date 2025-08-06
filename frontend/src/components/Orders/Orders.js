@@ -835,6 +835,15 @@ const Orders = () => {
                                 <span className="text-gray-900 font-medium">
                                   {order.deliveryMethod}
                                 </span>
+                                {/* Show international flag for non-Australian deliveries */}
+                                {order.deliveryMethod === "Delivery" &&
+                                  order.deliveryAddress?.country &&
+                                  order.deliveryAddress.country !==
+                                    "Australia" && (
+                                    <span className="text-blue-600 text-xs">
+                                      🌍 INTL
+                                    </span>
+                                  )}
                               </div>
                             )}
 
@@ -866,20 +875,40 @@ const Orders = () => {
                                 </div>
                               )}
 
-                            {/* Delivery Details */}
+                            {/* Delivery Details - Enhanced for International */}
                             {order.deliveryMethod === "Delivery" &&
                               order.deliveryAddress && (
                                 <div className="text-xs text-gray-600 ml-6">
                                   {order.deliveryAddress.street &&
                                   order.deliveryAddress.suburb &&
                                   order.deliveryAddress.state &&
-                                  order.deliveryAddress.postcode ? (
+                                  order.deliveryAddress.postcode &&
+                                  order.deliveryAddress.country ? (
                                     <div>
+                                      {/* Show flag or indicator for country */}
+                                      <div className="flex items-center space-x-1 mb-1">
+                                        {order.deliveryAddress.country !==
+                                          "Australia" && (
+                                          <span className="text-blue-600">
+                                            🌍
+                                          </span>
+                                        )}
+                                        <span className="font-medium">
+                                          {order.deliveryAddress.country}
+                                        </span>
+                                      </div>
                                       🏠 {order.deliveryAddress.street}
                                       <br />
                                       {order.deliveryAddress.suburb}{" "}
                                       {order.deliveryAddress.state}{" "}
                                       {order.deliveryAddress.postcode}
+                                      {/* Show international delivery notice */}
+                                      {order.deliveryAddress.country !==
+                                        "Australia" && (
+                                        <div className="mt-1 text-blue-600 font-medium">
+                                          International Delivery
+                                        </div>
+                                      )}
                                       {order.deliveryAddress.instructions && (
                                         <div className="mt-1 text-gray-500 italic">
                                           "
@@ -903,7 +932,7 @@ const Orders = () => {
                                 </div>
                               )}
 
-                            {/* Payment Method */}
+                            {/* Payment Method - Enhanced for International */}
                             {order.paymentMethod && (
                               <div className="text-xs text-gray-500 mt-2 ml-6">
                                 {order.paymentMethod === "Cash" ? "💵" : "💳"}{" "}
@@ -921,6 +950,15 @@ const Orders = () => {
                                     (Invoice sent)
                                   </span>
                                 )}
+                                {/* International delivery payment notice */}
+                                {order.deliveryMethod === "Delivery" &&
+                                  order.deliveryAddress?.country &&
+                                  order.deliveryAddress.country !==
+                                    "Australia" && (
+                                    <div className="text-orange-600 mt-1">
+                                      + International shipping fees
+                                    </div>
+                                  )}
                               </div>
                             )}
 

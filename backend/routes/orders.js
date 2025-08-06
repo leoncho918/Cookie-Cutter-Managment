@@ -874,11 +874,12 @@ router.put("/:id/completion", async (req, res) => {
         !deliveryAddress.street ||
         !deliveryAddress.suburb ||
         !deliveryAddress.state ||
-        !deliveryAddress.postcode
+        !deliveryAddress.postcode ||
+        !deliveryAddress.country
       ) {
         return res.status(400).json({
           message:
-            "Complete delivery address is required when delivery method is Delivery",
+            "Complete delivery address including country is required when delivery method is Delivery",
         });
       }
 
@@ -891,19 +892,19 @@ router.put("/:id/completion", async (req, res) => {
 
       if (deliveryAddress.suburb && deliveryAddress.suburb.length > 100) {
         return res.status(400).json({
-          message: "Suburb cannot exceed 100 characters",
+          message: "Suburb/City cannot exceed 100 characters",
         });
       }
 
-      if (deliveryAddress.state && deliveryAddress.state.length > 50) {
+      if (deliveryAddress.state && deliveryAddress.state.length > 100) {
         return res.status(400).json({
-          message: "State cannot exceed 50 characters",
+          message: "State/Province cannot exceed 100 characters",
         });
       }
 
-      if (deliveryAddress.postcode && deliveryAddress.postcode.length > 10) {
+      if (deliveryAddress.postcode && deliveryAddress.postcode.length > 20) {
         return res.status(400).json({
-          message: "Postcode cannot exceed 10 characters",
+          message: "Postal code cannot exceed 20 characters",
         });
       }
 
@@ -922,15 +923,43 @@ router.put("/:id/completion", async (req, res) => {
         });
       }
 
-      // Validate postcode format for Australia (basic validation)
-      if (deliveryAddress.country === "Australia" || !deliveryAddress.country) {
+      // Country-specific postcode validation
+      if (deliveryAddress.country === "Australia") {
         const postcodeRegex = /^[0-9]{4}$/;
         if (!postcodeRegex.test(deliveryAddress.postcode)) {
           return res.status(400).json({
             message: "Australian postcode must be 4 digits",
           });
         }
+      } else if (
+        deliveryAddress.country === "United States" ||
+        deliveryAddress.country === "USA"
+      ) {
+        const postcodeRegex = /^[0-9]{5}(-[0-9]{4})?$/;
+        if (!postcodeRegex.test(deliveryAddress.postcode)) {
+          return res.status(400).json({
+            message: "US ZIP code must be in format 12345 or 12345-6789",
+          });
+        }
+      } else if (deliveryAddress.country === "Canada") {
+        const postcodeRegex = /^[A-Z][0-9][A-Z] [0-9][A-Z][0-9]$/i;
+        if (!postcodeRegex.test(deliveryAddress.postcode)) {
+          return res.status(400).json({
+            message: "Canadian postal code must be in format A1A 1A1",
+          });
+        }
+      } else if (
+        deliveryAddress.country === "United Kingdom" ||
+        deliveryAddress.country === "UK"
+      ) {
+        const postcodeRegex = /^[A-Z]{1,2}[0-9R][0-9A-Z]? [0-9][A-Z]{2}$/i;
+        if (!postcodeRegex.test(deliveryAddress.postcode)) {
+          return res.status(400).json({
+            message: "UK postcode must be in valid format (e.g., SW1A 1AA)",
+          });
+        }
       }
+      // For other countries, we'll accept any format but ensure it's not empty
     }
 
     // Store original values for logging

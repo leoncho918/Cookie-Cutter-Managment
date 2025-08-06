@@ -26,6 +26,7 @@ import Modal from "../UI/Modal";
 import PickupDetails from "./PickupDetails";
 import axios from "axios";
 import CompletionModal from "./CompletionModal";
+import { validatePostcode } from "../../utils/countryHelpers";
 
 const OrderDetail = () => {
   const { id } = useParams();
@@ -404,19 +405,23 @@ const OrderDetail = () => {
         !deliveryAddress.street ||
         !deliveryAddress.suburb ||
         !deliveryAddress.state ||
-        !deliveryAddress.postcode
+        !deliveryAddress.postcode ||
+        !deliveryAddress.country
       ) {
-        showError("Please provide a complete delivery address");
+        showError(
+          "Please provide a complete delivery address including country"
+        );
         return;
       }
 
-      // Validate postcode format for Australia
-      if (deliveryAddress.country === "Australia" || !deliveryAddress.country) {
-        const postcodeRegex = /^[0-9]{4}$/;
-        if (!postcodeRegex.test(deliveryAddress.postcode)) {
-          showError("Australian postcode must be 4 digits");
-          return;
-        }
+      // Validate postcode format for the selected country
+      const postcodeValidation = validatePostcode(
+        deliveryAddress.postcode,
+        deliveryAddress.country
+      );
+      if (!postcodeValidation.valid) {
+        showError(postcodeValidation.message);
+        return;
       }
     }
 
@@ -822,10 +827,20 @@ const OrderDetail = () => {
   const renderCompletionDetails = () => {
     if (order.stage !== ORDER_STAGES.COMPLETED) return null;
 
+    const isInternationalDelivery =
+      order.deliveryMethod === "Delivery" &&
+      order.deliveryAddress?.country &&
+      order.deliveryAddress.country !== "Australia";
+
     return (
       <div className="mt-6 pt-4 border-t border-gray-200">
         <h4 className="text-sm font-medium text-gray-700 mb-3">
           Collection & Payment Details
+          {isInternationalDelivery && (
+            <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+              🌍 International
+            </span>
+          )}
         </h4>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -839,6 +854,9 @@ const OrderDetail = () => {
               </div>
               <div className="text-sm text-gray-900">
                 {order.deliveryMethod || "Not specified"}
+                {isInternationalDelivery && (
+                  <span className="text-blue-600 ml-1">(International)</span>
+                )}
               </div>
             </div>
           </div>
@@ -858,84 +876,44 @@ const OrderDetail = () => {
           </div>
         </div>
 
-        {/* Pickup Schedule Details */}
-        {order.deliveryMethod === "Pickup" && (
-          <div className="mt-6">
-            {order.pickupSchedule &&
-            order.pickupSchedule.date &&
-            order.pickupSchedule.time ? (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h5 className="text-sm font-medium text-blue-800 mb-2">
-                      📅 Scheduled Pickup
-                    </h5>
-                    <div className="text-blue-700 space-y-1">
-                      <div className="font-semibold">
-                        {new Date(order.pickupSchedule.date).toLocaleDateString(
-                          "en-AU",
-                          {
-                            weekday: "long",
-                            day: "2-digit",
-                            month: "2-digit",
-                            year: "numeric",
-                          }
-                        )}{" "}
-                        at {order.pickupSchedule.time}
-                      </div>
-                      <div className="text-sm">
-                        📍 40A Brancourt Ave, Bankstown NSW 2200
-                      </div>
-                      {order.pickupSchedule.notes && (
-                        <div className="text-sm mt-2">
-                          <strong>Notes:</strong> {order.pickupSchedule.notes}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="small"
-                    onClick={() => setShowPickupDetails(true)}
-                    className="text-blue-600 border-blue-300 hover:bg-blue-50"
-                  >
-                    📍 View Location & Map
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                <div className="flex items-center">
-                  <span className="text-yellow-600 text-xl mr-3">⚠️</span>
-                  <div>
-                    <h5 className="text-sm font-medium text-yellow-800">
-                      Pickup Schedule Needed
-                    </h5>
-                    <p className="text-yellow-700 text-sm">
-                      Please set your pickup date and time to complete the order
-                      process.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Delivery Address Details */}
+        {/* International Delivery Address Details - Enhanced */}
         {order.deliveryMethod === "Delivery" && (
           <div className="mt-6">
             {order.deliveryAddress &&
             order.deliveryAddress.street &&
             order.deliveryAddress.suburb &&
             order.deliveryAddress.state &&
-            order.deliveryAddress.postcode ? (
-              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+            order.deliveryAddress.postcode &&
+            order.deliveryAddress.country ? (
+              <div
+                className={`border rounded-lg p-4 ${
+                  isInternationalDelivery
+                    ? "bg-blue-50 border-blue-200"
+                    : "bg-green-50 border-green-200"
+                }`}
+              >
                 <div>
-                  <h5 className="text-sm font-medium text-green-800 mb-2">
+                  <h5
+                    className={`text-sm font-medium mb-2 ${
+                      isInternationalDelivery
+                        ? "text-blue-800"
+                        : "text-green-800"
+                    }`}
+                  >
                     🏠 Delivery Address
+                    {isInternationalDelivery && (
+                      <span className="ml-2 text-blue-600">
+                        🌍 International Shipping
+                      </span>
+                    )}
                   </h5>
-                  <div className="text-green-700 space-y-1">
+                  <div
+                    className={`space-y-1 ${
+                      isInternationalDelivery
+                        ? "text-blue-700"
+                        : "text-green-700"
+                    }`}
+                  >
                     <div className="font-semibold">
                       {order.deliveryAddress.street}
                     </div>
@@ -944,11 +922,23 @@ const OrderDetail = () => {
                       {order.deliveryAddress.state}{" "}
                       {order.deliveryAddress.postcode}
                     </div>
-                    <div>{order.deliveryAddress.country || "Australia"}</div>
+                    <div className="font-medium">
+                      {order.deliveryAddress.country}
+                    </div>
                     {order.deliveryAddress.instructions && (
                       <div className="text-sm mt-2">
                         <strong>Delivery Instructions:</strong>{" "}
                         {order.deliveryAddress.instructions}
+                      </div>
+                    )}
+
+                    {/* International Delivery Notice */}
+                    {isInternationalDelivery && (
+                      <div className="mt-3 p-2 bg-blue-100 border border-blue-300 rounded text-xs">
+                        <strong>International Delivery:</strong> Additional
+                        shipping charges and customs duties may apply. You will
+                        be contacted to arrange international shipping details
+                        and costs.
                       </div>
                     )}
                   </div>
@@ -973,7 +963,7 @@ const OrderDetail = () => {
           </div>
         )}
 
-        {/* Payment Method Notifications */}
+        {/* Enhanced Payment Method Notifications */}
         {order.paymentMethod && (
           <div className="mt-6">
             {order.paymentMethod === "Card" && (
@@ -987,13 +977,19 @@ const OrderDetail = () => {
                     <p className="text-blue-700 text-sm mt-1">
                       An invoice will be sent to your registered email address (
                       {order.bakerEmail}) for card payment processing.
+                      {isInternationalDelivery && (
+                        <span className="block mt-1 font-medium">
+                          International shipping charges will be included in the
+                          final invoice.
+                        </span>
+                      )}
                     </p>
                   </div>
                 </div>
               </div>
             )}
 
-            {order.paymentMethod === "Cash" && order.price && (
+            {order.paymentMethod === "Cash" && (
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                 <div className="flex items-start">
                   <span className="text-yellow-600 text-lg mr-3">💵</span>
@@ -1002,9 +998,22 @@ const OrderDetail = () => {
                       Cash Payment Information
                     </h5>
                     <p className="text-yellow-700 text-sm mt-1">
-                      Please bring exactly{" "}
-                      <strong>${order.price.toFixed(2)}</strong> as there might
-                      not be enough cash available for change.
+                      {order.price ? (
+                        <>
+                          Please bring exactly{" "}
+                          <strong>${order.price.toFixed(2)}</strong> as there
+                          might not be enough cash available for change.
+                          {isInternationalDelivery && (
+                            <span className="block mt-1 font-medium text-orange-700">
+                              Note: International shipping charges are not
+                              included in this amount and will need to be paid
+                              separately.
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        "Please bring the exact amount as there might not be enough cash available for change."
+                      )}
                     </p>
                   </div>
                 </div>

@@ -5,6 +5,13 @@ import React, { useState } from "react";
 import Button from "../UI/Button";
 import Modal from "../UI/Modal";
 import PickupDetails from "./PickupDetails";
+import {
+  COUNTRIES,
+  getStateLabel,
+  getPostcodeLabel,
+  getSuburbLabel,
+  validatePostcode,
+} from "../../utils/countryHelpers";
 
 const CompletionModal = ({
   isOpen,
@@ -69,13 +76,25 @@ const CompletionModal = ({
 
     if (completionData.deliveryMethod === "Delivery") {
       const { deliveryAddress } = completionData;
-      return (
-        deliveryAddress &&
-        deliveryAddress.street &&
-        deliveryAddress.suburb &&
-        deliveryAddress.state &&
-        deliveryAddress.postcode
+      if (
+        !deliveryAddress ||
+        !deliveryAddress.street ||
+        !deliveryAddress.suburb ||
+        !deliveryAddress.state ||
+        !deliveryAddress.postcode ||
+        !deliveryAddress.country
+      ) {
+        return false;
+      }
+
+      // Validate postcode format for the selected country
+      const postcodeValidation = validatePostcode(
+        deliveryAddress.postcode,
+        deliveryAddress.country
       );
+      if (!postcodeValidation.valid) {
+        return false;
+      }
     }
 
     return true;
@@ -290,10 +309,31 @@ const CompletionModal = ({
         {completionData.deliveryMethod === "Delivery" && (
           <div className="bg-green-50 border border-green-200 rounded-lg p-6">
             <h4 className="text-lg font-medium text-green-800 mb-4">
-              🏠 Delivery Address
+              🚚 Delivery Address
             </h4>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Country Selection - Show first for international support */}
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-green-700 mb-1">
+                  Country *
+                </label>
+                <select
+                  value={completionData.deliveryAddress?.country || "Australia"}
+                  onChange={(e) =>
+                    handleDeliveryAddressChange("country", e.target.value)
+                  }
+                  required
+                  className="w-full border border-green-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+                >
+                  {COUNTRIES.map((country) => (
+                    <option key={country.code} value={country.name}>
+                      {country.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-green-700 mb-1">
                   Street Address *
@@ -312,7 +352,10 @@ const CompletionModal = ({
 
               <div>
                 <label className="block text-sm font-medium text-green-700 mb-1">
-                  Suburb *
+                  {getSuburbLabel(
+                    completionData.deliveryAddress?.country || "Australia"
+                  )}{" "}
+                  *
                 </label>
                 <input
                   type="text"
@@ -320,7 +363,13 @@ const CompletionModal = ({
                   onChange={(e) =>
                     handleDeliveryAddressChange("suburb", e.target.value)
                   }
-                  placeholder="e.g., Bankstown"
+                  placeholder={
+                    completionData.deliveryAddress?.country === "Australia"
+                      ? "e.g., Bankstown"
+                      : `Enter ${getSuburbLabel(
+                          completionData.deliveryAddress?.country || "Australia"
+                        ).toLowerCase()}`
+                  }
                   required
                   className="w-full border border-green-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
                 />
@@ -328,31 +377,54 @@ const CompletionModal = ({
 
               <div>
                 <label className="block text-sm font-medium text-green-700 mb-1">
-                  State *
+                  {getStateLabel(
+                    completionData.deliveryAddress?.country || "Australia"
+                  )}{" "}
+                  *
                 </label>
-                <select
-                  value={completionData.deliveryAddress?.state || ""}
-                  onChange={(e) =>
-                    handleDeliveryAddressChange("state", e.target.value)
-                  }
-                  required
-                  className="w-full border border-green-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
-                >
-                  <option value="">Select state...</option>
-                  <option value="NSW">NSW</option>
-                  <option value="VIC">VIC</option>
-                  <option value="QLD">QLD</option>
-                  <option value="WA">WA</option>
-                  <option value="SA">SA</option>
-                  <option value="TAS">TAS</option>
-                  <option value="ACT">ACT</option>
-                  <option value="NT">NT</option>
-                </select>
+                {completionData.deliveryAddress?.country === "Australia" ? (
+                  <select
+                    value={completionData.deliveryAddress?.state || ""}
+                    onChange={(e) =>
+                      handleDeliveryAddressChange("state", e.target.value)
+                    }
+                    required
+                    className="w-full border border-green-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+                  >
+                    <option value="">Select state...</option>
+                    <option value="NSW">New South Wales (NSW)</option>
+                    <option value="VIC">Victoria (VIC)</option>
+                    <option value="QLD">Queensland (QLD)</option>
+                    <option value="WA">Western Australia (WA)</option>
+                    <option value="SA">South Australia (SA)</option>
+                    <option value="TAS">Tasmania (TAS)</option>
+                    <option value="ACT">
+                      Australian Capital Territory (ACT)
+                    </option>
+                    <option value="NT">Northern Territory (NT)</option>
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={completionData.deliveryAddress?.state || ""}
+                    onChange={(e) =>
+                      handleDeliveryAddressChange("state", e.target.value)
+                    }
+                    placeholder={`Enter ${getStateLabel(
+                      completionData.deliveryAddress?.country || "Australia"
+                    ).toLowerCase()}`}
+                    required
+                    className="w-full border border-green-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+                  />
+                )}
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-green-700 mb-1">
-                  Postcode *
+                  {getPostcodeLabel(
+                    completionData.deliveryAddress?.country || "Australia"
+                  )}{" "}
+                  *
                 </label>
                 <input
                   type="text"
@@ -360,24 +432,14 @@ const CompletionModal = ({
                   onChange={(e) =>
                     handleDeliveryAddressChange("postcode", e.target.value)
                   }
-                  placeholder="e.g., 2200"
-                  pattern="[0-9]{4}"
-                  maxLength="4"
+                  placeholder={(() => {
+                    const validation = validatePostcode(
+                      "",
+                      completionData.deliveryAddress?.country || "Australia"
+                    );
+                    return validation.example;
+                  })()}
                   required
-                  className="w-full border border-green-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-green-700 mb-1">
-                  Country
-                </label>
-                <input
-                  type="text"
-                  value={completionData.deliveryAddress?.country || "Australia"}
-                  onChange={(e) =>
-                    handleDeliveryAddressChange("country", e.target.value)
-                  }
                   className="w-full border border-green-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
                 />
               </div>
@@ -402,6 +464,28 @@ const CompletionModal = ({
                 </div>
               </div>
             </div>
+
+            {/* International Delivery Notice */}
+            {completionData.deliveryAddress?.country &&
+              completionData.deliveryAddress.country !== "Australia" && (
+                <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                  <div className="flex items-start">
+                    <span className="text-blue-600 text-lg mr-2">🌍</span>
+                    <div>
+                      <h5 className="text-sm font-medium text-blue-800">
+                        International Delivery
+                      </h5>
+                      <p className="text-blue-700 text-sm mt-1">
+                        Additional delivery charges and customs duties may apply
+                        for international shipments to{" "}
+                        {completionData.deliveryAddress.country}. You will be
+                        contacted to arrange international shipping details and
+                        costs.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
           </div>
         )}
 
