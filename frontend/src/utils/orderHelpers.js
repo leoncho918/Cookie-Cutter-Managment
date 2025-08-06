@@ -297,11 +297,6 @@ export const formatDateTime = (date) => {
   });
 };
 
-// Format date for input field
-export const formatDateForInput = (date) => {
-  return new Date(date).toISOString().split("T")[0];
-};
-
 // Format measurement for display
 export const formatMeasurement = (measurement) => {
   if (!measurement || !measurement.value || measurement.value === "") {
@@ -499,4 +494,137 @@ export const getOrderPermissions = (order, user) => {
     imagePermissions: getImagePermissions(order, user),
     submissionValidation: validateOrderForSubmission(order),
   };
+};
+
+// Format date for input field (YYYY-MM-DD format)
+export const formatDateForInput = (date) => {
+  if (!date) return "";
+  return new Date(date).toISOString().split("T")[0];
+};
+
+// Format pickup schedule for display
+export const formatPickupSchedule = (pickupSchedule) => {
+  if (!pickupSchedule || !pickupSchedule.date || !pickupSchedule.time) {
+    return "Not scheduled";
+  }
+
+  const date = formatDate(pickupSchedule.date);
+  const time = pickupSchedule.time;
+
+  return `${date} at ${time}`;
+};
+
+// Format time for display (12-hour format)
+export const formatTime12Hour = (time24) => {
+  if (!time24) return "";
+
+  const [hours, minutes] = time24.split(":");
+  const hour12 = parseInt(hours) % 12 || 12;
+  const ampm = parseInt(hours) >= 12 ? "PM" : "AM";
+
+  return `${hour12}:${minutes} ${ampm}`;
+};
+
+// Validate pickup schedule
+export const validatePickupSchedule = (pickupSchedule) => {
+  if (!pickupSchedule) {
+    return { valid: false, message: "Pickup schedule is required" };
+  }
+
+  if (!pickupSchedule.date) {
+    return { valid: false, message: "Pickup date is required" };
+  }
+
+  if (!pickupSchedule.time) {
+    return { valid: false, message: "Pickup time is required" };
+  }
+
+  // Validate date is not in the past
+  const pickupDateTime = new Date(
+    `${pickupSchedule.date}T${pickupSchedule.time}`
+  );
+  const now = new Date();
+
+  if (pickupDateTime < now) {
+    return {
+      valid: false,
+      message: "Pickup date and time cannot be in the past",
+    };
+  }
+
+  // Validate notes length if provided
+  if (pickupSchedule.notes && pickupSchedule.notes.length > 500) {
+    return {
+      valid: false,
+      message: "Pickup notes cannot exceed 500 characters",
+    };
+  }
+
+  return { valid: true };
+};
+
+// Check if pickup schedule is required
+export const isPickupScheduleRequired = (deliveryMethod) => {
+  return deliveryMethod === "Pickup";
+};
+
+// Get next available pickup times (helper for UI)
+export const getNextAvailablePickupTimes = () => {
+  const times = [];
+  const startHour = 9; // 9 AM
+  const endHour = 17; // 5 PM
+
+  for (let hour = startHour; hour <= endHour; hour++) {
+    for (let minute = 0; minute < 60; minute += 30) {
+      const timeString = `${hour.toString().padStart(2, "0")}:${minute
+        .toString()
+        .padStart(2, "0")}`;
+      const displayTime = formatTime12Hour(timeString);
+      times.push({
+        value: timeString,
+        label: displayTime,
+      });
+    }
+  }
+
+  return times;
+};
+
+// Enhanced completion validation
+export const validateCompletionDetails = (completionData) => {
+  const validation = { valid: true, issues: [] };
+
+  // Check delivery method
+  if (!completionData.deliveryMethod) {
+    validation.valid = false;
+    validation.issues.push({
+      field: "deliveryMethod",
+      message: "Delivery method is required",
+    });
+  }
+
+  // Check payment method
+  if (!completionData.paymentMethod) {
+    validation.valid = false;
+    validation.issues.push({
+      field: "paymentMethod",
+      message: "Payment method is required",
+    });
+  }
+
+  // Check pickup schedule if delivery method is Pickup
+  if (completionData.deliveryMethod === "Pickup") {
+    const pickupValidation = validatePickupSchedule(
+      completionData.pickupSchedule
+    );
+    if (!pickupValidation.valid) {
+      validation.valid = false;
+      validation.issues.push({
+        field: "pickupSchedule",
+        message: pickupValidation.message,
+      });
+    }
+  }
+
+  return validation;
 };

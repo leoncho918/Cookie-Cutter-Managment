@@ -1,4 +1,4 @@
-// models/Order.js - Order model with measurement property added
+// models/Order.js - Enhanced Order model with pickup date/time
 const mongoose = require("mongoose");
 
 const itemSchema = new mongoose.Schema({
@@ -91,6 +91,19 @@ const orderSchema = new mongoose.Schema({
   paymentMethod: {
     type: String,
     enum: ["Cash", "Card"],
+  },
+  // NEW: Pickup scheduling for when deliveryMethod is "Pickup"
+  pickupSchedule: {
+    date: {
+      type: Date,
+    },
+    time: {
+      type: String, // Store time as "HH:MM" format
+    },
+    notes: {
+      type: String,
+      maxlength: 500,
+    },
   },
   // Order tracking
   stageHistory: [

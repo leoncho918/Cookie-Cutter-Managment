@@ -120,6 +120,177 @@ const Dashboard = () => {
     );
   }
 
+  const PickupScheduleList = () => {
+    const [pickupOrders, setPickupOrders] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const { showError } = useToast();
+
+    useEffect(() => {
+      loadPickupOrders();
+    }, []);
+
+    const loadPickupOrders = async () => {
+      try {
+        setLoading(true);
+
+        // Get completed orders with pickup method
+        const response = await axios.get("/orders", {
+          params: {
+            stage: "Completed",
+          },
+        });
+
+        // Filter orders with pickup method and sort by pickup date
+        const ordersWithPickup = response.data
+          .filter(
+            (order) =>
+              order.deliveryMethod === "Pickup" &&
+              order.pickupSchedule &&
+              order.pickupSchedule.date
+          )
+          .sort((a, b) => {
+            const dateA = new Date(
+              `${a.pickupSchedule.date}T${a.pickupSchedule.time || "00:00"}`
+            );
+            const dateB = new Date(
+              `${b.pickupSchedule.date}T${b.pickupSchedule.time || "00:00"}`
+            );
+            return dateA - dateB;
+          });
+
+        setPickupOrders(ordersWithPickup);
+      } catch (error) {
+        console.error("Error loading pickup orders:", error);
+        showError("Failed to load pickup schedules");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    const formatPickupDateTime = (pickupSchedule) => {
+      if (!pickupSchedule || !pickupSchedule.date) return "Not scheduled";
+
+      const date = formatDate(pickupSchedule.date);
+      const time = pickupSchedule.time || "Time not set";
+
+      return `${date} at ${time}`;
+    };
+
+    const getPickupStatus = (pickupSchedule) => {
+      if (!pickupSchedule || !pickupSchedule.date || !pickupSchedule.time) {
+        return {
+          status: "incomplete",
+          color: "yellow",
+          label: "Incomplete Details",
+        };
+      }
+
+      const pickupDateTime = new Date(
+        `${pickupSchedule.date}T${pickupSchedule.time}`
+      );
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const pickupDate = new Date(pickupSchedule.date);
+
+      if (pickupDateTime < now) {
+        return { status: "overdue", color: "red", label: "Overdue" };
+      } else if (pickupDate.getTime() === today.getTime()) {
+        return { status: "today", color: "orange", label: "Today" };
+      } else if (
+        pickupDate <= new Date(today.getTime() + 24 * 60 * 60 * 1000)
+      ) {
+        return { status: "tomorrow", color: "yellow", label: "Tomorrow" };
+      } else {
+        return { status: "upcoming", color: "green", label: "Upcoming" };
+      }
+    };
+
+    if (loading) {
+      return (
+        <div className="p-6">
+          <LoadingSpinner size="medium" />
+        </div>
+      );
+    }
+
+    if (pickupOrders.length === 0) {
+      return (
+        <div className="p-6 text-center">
+          <span className="text-4xl mb-4 block">📅</span>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">
+            No Pickup Orders
+          </h3>
+          <p className="text-gray-600">
+            No completed orders are scheduled for pickup at this time.
+          </p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="p-6">
+        <div className="space-y-4">
+          {pickupOrders.slice(0, 5).map((order) => {
+            const pickupStatus = getPickupStatus(order.pickupSchedule);
+
+            return (
+              <div
+                key={order._id}
+                className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                <div className="flex-1">
+                  <div className="flex items-center space-x-3">
+                    <Link
+                      to={`/orders/${order._id}`}
+                      className="font-medium text-gray-900 hover:text-blue-600 transition-colors"
+                    >
+                      {order.orderNumber}
+                    </Link>
+                    <span
+                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-${pickupStatus.color}-100 text-${pickupStatus.color}-800`}
+                    >
+                      {pickupStatus.label}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-sm text-gray-600">
+                    <span className="font-medium">{order.bakerEmail}</span>
+                    <span className="mx-2">•</span>
+                    <span>
+                      {order.items.length} item
+                      {order.items.length !== 1 ? "s" : ""}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="text-right">
+                  <div className="text-sm font-medium text-gray-900">
+                    {formatPickupDateTime(order.pickupSchedule)}
+                  </div>
+                  {order.pickupSchedule?.notes && (
+                    <div className="text-xs text-gray-500 mt-1 max-w-48 truncate">
+                      "{order.pickupSchedule.notes}"
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {pickupOrders.length > 5 && (
+          <div className="mt-4 text-center">
+            <Link
+              to="/orders?stage=Completed"
+              className="text-sm text-blue-600 hover:text-blue-500 font-medium"
+            >
+              View all pickup orders →
+            </Link>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const quickActions = getQuickActions();
   const stageStats = getStageStats();
 
@@ -336,6 +507,19 @@ const Dashboard = () => {
           )}
         </div>
       </div>
+
+      {/* Pickup Schedule Section - Admin Only */}
+      {user.role === "admin" && (
+        <div className="bg-white shadow rounded-lg">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <h3 className="text-lg font-medium text-gray-900">
+              📅 Upcoming Pickups
+            </h3>
+          </div>
+
+          <PickupScheduleList />
+        </div>
+      )}
 
       {/* Baker-specific order stage summary */}
       {user.role === "baker" && dashboardData.recentOrders.length > 0 && (

@@ -805,7 +805,7 @@ router.put("/:id/completion", async (req, res) => {
         .json({ message: "Only bakers can update completion details" });
     }
 
-    const { deliveryMethod, paymentMethod } = req.body;
+    const { deliveryMethod, paymentMethod, pickupSchedule } = req.body;
     const order = await Order.findById(req.params.id);
 
     if (!order) {
@@ -822,26 +822,72 @@ router.put("/:id/completion", async (req, res) => {
       });
     }
 
+    // Validate delivery method
     if (!deliveryMethod || !["Pickup", "Delivery"].includes(deliveryMethod)) {
       return res
         .status(400)
         .json({ message: "Valid delivery method is required" });
     }
 
+    // Validate payment method
     if (!paymentMethod || !["Cash", "Card"].includes(paymentMethod)) {
       return res
         .status(400)
         .json({ message: "Valid payment method is required" });
     }
 
+    // Validate pickup schedule if delivery method is Pickup
+    if (deliveryMethod === "Pickup") {
+      if (!pickupSchedule || !pickupSchedule.date || !pickupSchedule.time) {
+        return res.status(400).json({
+          message:
+            "Pickup date and time are required when delivery method is Pickup",
+        });
+      }
+
+      // Validate pickup date is not in the past
+      const pickupDateTime = new Date(
+        `${pickupSchedule.date}T${pickupSchedule.time}`
+      );
+      const now = new Date();
+
+      if (pickupDateTime < now) {
+        return res.status(400).json({
+          message: "Pickup date and time cannot be in the past",
+        });
+      }
+
+      // Validate notes length if provided
+      if (pickupSchedule.notes && pickupSchedule.notes.length > 500) {
+        return res.status(400).json({
+          message: "Pickup notes cannot exceed 500 characters",
+        });
+      }
+    }
+
     // Store original values for logging
     const originalCompletion = {
       deliveryMethod: order.deliveryMethod,
       paymentMethod: order.paymentMethod,
+      pickupSchedule: order.pickupSchedule,
     };
 
+    // Update completion details
     order.deliveryMethod = deliveryMethod;
     order.paymentMethod = paymentMethod;
+
+    // Update pickup schedule if delivery method is Pickup
+    if (deliveryMethod === "Pickup") {
+      order.pickupSchedule = {
+        date: new Date(pickupSchedule.date),
+        time: pickupSchedule.time,
+        notes: pickupSchedule.notes || "",
+      };
+    } else {
+      // Clear pickup schedule if delivery method is not Pickup
+      order.pickupSchedule = undefined;
+    }
+
     await order.save();
 
     console.log("📋 Order completion details updated:", {
@@ -851,6 +897,10 @@ router.put("/:id/completion", async (req, res) => {
       changes: {
         deliveryMethod: `${originalCompletion.deliveryMethod} → ${deliveryMethod}`,
         paymentMethod: `${originalCompletion.paymentMethod} → ${paymentMethod}`,
+        pickupScheduled:
+          deliveryMethod === "Pickup"
+            ? `${pickupSchedule.date} at ${pickupSchedule.time}`
+            : "Not applicable",
       },
     });
 

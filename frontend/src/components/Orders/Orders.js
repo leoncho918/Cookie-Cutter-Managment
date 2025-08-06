@@ -1,4 +1,4 @@
-// src/components/Orders/Orders.js - Enhanced Orders list with baker email filtering
+// src/components/Orders/Orders.js - Complete Orders list with enhanced pickup support
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
@@ -6,6 +6,8 @@ import { useToast } from "../../contexts/ToastContext";
 import { useSocket } from "../../contexts/SocketContext";
 import {
   ORDER_STAGES,
+  DELIVERY_METHODS,
+  PAYMENT_METHODS,
   getStageColor,
   formatDate,
 } from "../../utils/orderHelpers";
@@ -27,9 +29,12 @@ const Orders = () => {
   const [filters, setFilters] = useState({
     stage: "",
     bakerId: "",
-    bakerEmail: "", // New filter for baker email
+    bakerEmail: "",
     dateFrom: "",
     dateTo: "",
+    deliveryMethod: "", // New filter
+    paymentMethod: "", // New filter
+    pickupStatus: "", // New filter
   });
   const [deleteModal, setDeleteModal] = useState({
     isOpen: false,
@@ -70,6 +75,9 @@ const Orders = () => {
             message = `Order ${
               updatedOrder.orderNumber || "deleted"
             } was deleted`;
+            break;
+          case "completion_updated":
+            message = `Order ${updatedOrder.orderNumber} completion details updated`;
             break;
           default:
             message = `Order ${updatedOrder.orderNumber} ${eventType.replace(
@@ -197,12 +205,46 @@ const Orders = () => {
     }));
   };
 
-  // Quick filter functions for admin
+  // Enhanced quick filter functions for admin
   const applyQuickFilter = (filterType, value) => {
-    setFilters((prev) => ({
-      ...prev,
-      [filterType]: value,
-    }));
+    switch (filterType) {
+      case "pickup-orders":
+        setFilters((prev) => ({
+          ...prev,
+          stage: "Completed",
+          deliveryMethod: "Pickup",
+        }));
+        break;
+      case "delivery-orders":
+        setFilters((prev) => ({
+          ...prev,
+          stage: "Completed",
+          deliveryMethod: "Delivery",
+        }));
+        break;
+      case "pickup-today":
+        setFilters((prev) => ({
+          ...prev,
+          stage: "Completed",
+          deliveryMethod: "Pickup",
+          pickupStatus: "today",
+        }));
+        break;
+      case "pickup-overdue":
+        setFilters((prev) => ({
+          ...prev,
+          stage: "Completed",
+          deliveryMethod: "Pickup",
+          pickupStatus: "overdue",
+        }));
+        break;
+      default:
+        setFilters((prev) => ({
+          ...prev,
+          [filterType]: value,
+        }));
+        break;
+    }
   };
 
   const clearAllFilters = () => {
@@ -212,6 +254,9 @@ const Orders = () => {
       bakerEmail: "",
       dateFrom: "",
       dateTo: "",
+      deliveryMethod: "",
+      paymentMethod: "",
+      pickupStatus: "",
     });
   };
 
@@ -232,7 +277,7 @@ const Orders = () => {
     if (
       user.role === "baker" &&
       order.bakerId === user.bakerId &&
-      order.stage === "Draft"
+      (order.stage === "Draft" || order.stage === "Requested Changes")
     ) {
       return true;
     }
@@ -243,6 +288,55 @@ const Orders = () => {
   const uniqueBakerEmails = [
     ...new Set(orders.map((order) => order.bakerEmail)),
   ].sort();
+
+  // Helper function to format pickup status
+  const getPickupStatusDisplay = (order) => {
+    if (order.deliveryMethod !== "Pickup" || !order.pickupSchedule) {
+      return null;
+    }
+
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    if (!order.pickupSchedule.date || !order.pickupSchedule.time) {
+      return {
+        label: "Schedule needed",
+        color: "yellow",
+        icon: "⚠️",
+      };
+    }
+
+    const pickupDate = new Date(order.pickupSchedule.date);
+    const pickupDateTime = new Date(
+      `${order.pickupSchedule.date}T${order.pickupSchedule.time}`
+    );
+
+    if (pickupDateTime < now) {
+      return {
+        label: "Overdue",
+        color: "red",
+        icon: "🚨",
+      };
+    } else if (pickupDate.getTime() === today.getTime()) {
+      return {
+        label: "Today",
+        color: "orange",
+        icon: "📅",
+      };
+    } else if (pickupDate.getTime() === today.getTime() + 24 * 60 * 60 * 1000) {
+      return {
+        label: "Tomorrow",
+        color: "blue",
+        icon: "📅",
+      };
+    } else {
+      return {
+        label: "Scheduled",
+        color: "green",
+        icon: "✅",
+      };
+    }
+  };
 
   // Connection status indicator
   const renderConnectionStatus = () => {
@@ -304,7 +398,65 @@ const Orders = () => {
           </div>
         </div>
 
-        {/* Quick Filter Buttons for Admin */}
+        {/* Quick Filter Buttons */}
+        {user.role === "admin" && (
+          <div className="border-b border-gray-200 pb-4">
+            <h4 className="text-sm font-medium text-gray-700 mb-2">
+              Quick Filters:
+            </h4>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => applyQuickFilter("stage", "Completed")}
+                className={`px-3 py-1 text-xs rounded-full border transition-colors ${
+                  filters.stage === "Completed" && !filters.deliveryMethod
+                    ? "bg-green-100 border-green-300 text-green-700"
+                    : "bg-gray-100 border-gray-300 text-gray-600 hover:bg-gray-200"
+                }`}
+              >
+                📦 Completed Orders
+              </button>
+
+              <button
+                onClick={() => applyQuickFilter("stage", "Requires Approval")}
+                className={`px-3 py-1 text-xs rounded-full border transition-colors ${
+                  filters.stage === "Requires Approval"
+                    ? "bg-purple-100 border-purple-300 text-purple-700"
+                    : "bg-gray-100 border-gray-300 text-gray-600 hover:bg-gray-200"
+                }`}
+              >
+                ⏳ Needs Approval
+              </button>
+
+              <button
+                onClick={() => applyQuickFilter("pickup-orders")}
+                className={`px-3 py-1 text-xs rounded-full border transition-colors ${
+                  filters.stage === "Completed" &&
+                  filters.deliveryMethod === "Pickup"
+                    ? "bg-blue-100 border-blue-300 text-blue-700"
+                    : "bg-gray-100 border-gray-300 text-gray-600 hover:bg-gray-200"
+                }`}
+              >
+                🚶 Pickup Orders
+              </button>
+
+              <button
+                onClick={() => applyQuickFilter("pickup-today")}
+                className="px-3 py-1 text-xs rounded-full border bg-orange-100 border-orange-300 text-orange-700 hover:bg-orange-200 transition-colors"
+              >
+                📅 Pickup Today
+              </button>
+
+              <button
+                onClick={() => applyQuickFilter("pickup-overdue")}
+                className="px-3 py-1 text-xs rounded-full border bg-red-100 border-red-300 text-red-700 hover:bg-red-200 transition-colors"
+              >
+                🚨 Overdue Pickups
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Baker Quick Filters */}
         {user.role === "admin" && uniqueBakerEmails.length > 0 && (
           <div className="border-b border-gray-200 pb-4">
             <h4 className="text-sm font-medium text-gray-700 mb-2">
@@ -333,7 +485,8 @@ const Orders = () => {
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Detailed Filters */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-4">
           {/* Stage Filter */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -369,7 +522,7 @@ const Orders = () => {
             </div>
           )}
 
-          {/* Baker Email Filter (Admin only) - NEW FEATURE */}
+          {/* Baker Email Filter (Admin only) */}
           {user.role === "admin" && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -386,6 +539,52 @@ const Orders = () => {
                 {bakers.map((baker) => (
                   <option key={baker._id} value={baker.email}>
                     {baker.email} ({baker.bakerId})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Delivery Method Filter (Admin only) */}
+          {user.role === "admin" && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Delivery Method
+              </label>
+              <select
+                value={filters.deliveryMethod}
+                onChange={(e) =>
+                  handleFilterChange("deliveryMethod", e.target.value)
+                }
+                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All Methods</option>
+                {Object.values(DELIVERY_METHODS).map((method) => (
+                  <option key={method} value={method}>
+                    {method}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Payment Method Filter (Admin only) */}
+          {user.role === "admin" && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Payment Method
+              </label>
+              <select
+                value={filters.paymentMethod}
+                onChange={(e) =>
+                  handleFilterChange("paymentMethod", e.target.value)
+                }
+                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All Methods</option>
+                {Object.values(PAYMENT_METHODS).map((method) => (
+                  <option key={method} value={method}>
+                    {method}
                   </option>
                 ))}
               </select>
@@ -458,6 +657,28 @@ const Orders = () => {
                     </button>
                   </span>
                 )}
+                {filters.deliveryMethod && (
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
+                    Delivery: {filters.deliveryMethod}
+                    <button
+                      onClick={() => handleFilterChange("deliveryMethod", "")}
+                      className="ml-1 text-indigo-600 hover:text-indigo-800"
+                    >
+                      ×
+                    </button>
+                  </span>
+                )}
+                {filters.paymentMethod && (
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-pink-100 text-pink-800">
+                    Payment: {filters.paymentMethod}
+                    <button
+                      onClick={() => handleFilterChange("paymentMethod", "")}
+                      className="ml-1 text-pink-600 hover:text-pink-800"
+                    >
+                      ×
+                    </button>
+                  </span>
+                )}
                 {(filters.dateFrom || filters.dateTo) && (
                   <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
                     Date Range
@@ -484,14 +705,6 @@ const Orders = () => {
           <Button variant="outline" onClick={loadOrders}>
             Refresh
           </Button>
-          {user.role === "admin" && (
-            <Button
-              variant="outline"
-              onClick={() => applyQuickFilter("stage", "Requires Approval")}
-            >
-              Show Pending Approvals
-            </Button>
-          )}
         </div>
       </div>
 
@@ -542,86 +755,154 @@ const Orders = () => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Price
                   </th>
+                  {user.role === "admin" && (
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Delivery Details
+                    </th>
+                  )}
                   <th className="relative px-6 py-3">
                     <span className="sr-only">Actions</span>
                   </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {orders.map((order) => (
-                  <tr
-                    key={order._id}
-                    className="hover:bg-gray-50 transition-colors"
-                  >
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div>
-                        <div className="text-sm font-medium text-gray-900">
-                          {order.orderNumber}
-                        </div>
-                        <div className="text-sm text-gray-500">
-                          Created {formatDate(order.createdAt)}
-                        </div>
-                      </div>
-                    </td>
+                {orders.map((order) => {
+                  const pickupStatus = getPickupStatusDisplay(order);
 
-                    {user.role === "admin" && (
+                  return (
+                    <tr
+                      key={order._id}
+                      className="hover:bg-gray-50 transition-colors"
+                    >
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">
-                          {order.bakerId}
-                        </div>
-                        <div className="text-sm text-gray-500">
-                          {order.bakerEmail}
+                        <div>
+                          <div className="text-sm font-medium text-gray-900">
+                            {order.orderNumber}
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            Created {formatDate(order.createdAt)}
+                          </div>
                         </div>
                       </td>
-                    )}
 
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {formatDate(order.dateRequired)}
-                    </td>
-
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span
-                        className={`
-                          inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
-                          bg-${getStageColor(
-                            order.stage
-                          )}-100 text-${getStageColor(order.stage)}-800
-                        `}
-                      >
-                        {order.stage}
-                      </span>
-                    </td>
-
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {order.items.length} item
-                      {order.items.length !== 1 ? "s" : ""}
-                    </td>
-
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {order.price ? `$${order.price.toFixed(2)}` : "-"}
-                    </td>
-
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
-                      <Link
-                        to={`/orders/${order._id}`}
-                        className="text-blue-600 hover:text-blue-900 transition-colors"
-                      >
-                        View
-                      </Link>
-
-                      {canDeleteOrder(order) && (
-                        <button
-                          onClick={() =>
-                            setDeleteModal({ isOpen: true, orderId: order._id })
-                          }
-                          className="text-red-600 hover:text-red-900 ml-2 transition-colors"
-                        >
-                          Delete
-                        </button>
+                      {user.role === "admin" && (
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-900">
+                            {order.bakerId}
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            {order.bakerEmail}
+                          </div>
+                        </td>
                       )}
-                    </td>
-                  </tr>
-                ))}
+
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {formatDate(order.dateRequired)}
+                      </td>
+
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span
+                          className={`
+                            inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                            bg-${getStageColor(
+                              order.stage
+                            )}-100 text-${getStageColor(order.stage)}-800
+                          `}
+                        >
+                          {order.stage}
+                        </span>
+                      </td>
+
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {order.items.length} item
+                        {order.items.length !== 1 ? "s" : ""}
+                      </td>
+
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {order.price ? `${order.price.toFixed(2)}` : "-"}
+                      </td>
+
+                      {user.role === "admin" && (
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm">
+                            {order.deliveryMethod && (
+                              <div className="flex items-center space-x-1">
+                                <span className="text-gray-900">
+                                  {order.deliveryMethod === "Pickup"
+                                    ? "🚶"
+                                    : "🚚"}
+                                </span>
+                                <span className="text-gray-900">
+                                  {order.deliveryMethod}
+                                </span>
+                              </div>
+                            )}
+                            {order.deliveryMethod === "Pickup" &&
+                              order.pickupSchedule && (
+                                <div className="text-xs text-gray-500 mt-1">
+                                  {order.pickupSchedule.date &&
+                                  order.pickupSchedule.time ? (
+                                    <>
+                                      {formatDate(order.pickupSchedule.date)} at{" "}
+                                      {order.pickupSchedule.time}
+                                    </>
+                                  ) : (
+                                    <span className="text-yellow-600">
+                                      Pickup time not set
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            {pickupStatus && (
+                              <div className="mt-1">
+                                <span
+                                  className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-${pickupStatus.color}-100 text-${pickupStatus.color}-800`}
+                                >
+                                  {pickupStatus.icon} {pickupStatus.label}
+                                </span>
+                              </div>
+                            )}
+                            {order.paymentMethod && (
+                              <div className="text-xs text-gray-500 mt-1">
+                                {order.paymentMethod === "Cash" ? "💵" : "💳"}{" "}
+                                {order.paymentMethod}
+                              </div>
+                            )}
+                            {!order.deliveryMethod &&
+                              order.stage === "Completed" && (
+                                <span className="text-xs text-red-600">
+                                  Details needed
+                                </span>
+                              )}
+                          </div>
+                        </td>
+                      )}
+
+                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
+                        <Link
+                          to={`/orders/${order._id}`}
+                          className="text-blue-600 hover:text-blue-900 transition-colors"
+                        >
+                          View
+                        </Link>
+
+                        {canDeleteOrder(order) && (
+                          <button
+                            onClick={() =>
+                              setDeleteModal({
+                                isOpen: true,
+                                orderId: order._id,
+                              })
+                            }
+                            className="text-red-600 hover:text-red-900 ml-2 transition-colors"
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
