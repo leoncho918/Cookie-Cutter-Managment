@@ -826,52 +826,109 @@ const Orders = () => {
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm">
                             {order.deliveryMethod && (
-                              <div className="flex items-center space-x-1">
+                              <div className="flex items-center space-x-1 mb-1">
                                 <span className="text-gray-900">
                                   {order.deliveryMethod === "Pickup"
                                     ? "🚶"
                                     : "🚚"}
                                 </span>
-                                <span className="text-gray-900">
+                                <span className="text-gray-900 font-medium">
                                   {order.deliveryMethod}
                                 </span>
                               </div>
                             )}
+
+                            {/* Pickup Details */}
                             {order.deliveryMethod === "Pickup" &&
                               order.pickupSchedule && (
-                                <div className="text-xs text-gray-500 mt-1">
+                                <div className="text-xs text-gray-600 ml-6">
                                   {order.pickupSchedule.date &&
                                   order.pickupSchedule.time ? (
                                     <>
-                                      {formatDate(order.pickupSchedule.date)} at{" "}
-                                      {order.pickupSchedule.time}
+                                      📅 {formatDate(order.pickupSchedule.date)}{" "}
+                                      at {order.pickupSchedule.time}
+                                      {pickupStatus && (
+                                        <div className="mt-1">
+                                          <span
+                                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-${pickupStatus.color}-100 text-${pickupStatus.color}-800`}
+                                          >
+                                            {pickupStatus.icon}{" "}
+                                            {pickupStatus.label}
+                                          </span>
+                                        </div>
+                                      )}
                                     </>
                                   ) : (
                                     <span className="text-yellow-600">
-                                      Pickup time not set
+                                      ⚠️ Pickup time not set
                                     </span>
                                   )}
                                 </div>
                               )}
-                            {pickupStatus && (
-                              <div className="mt-1">
-                                <span
-                                  className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-${pickupStatus.color}-100 text-${pickupStatus.color}-800`}
-                                >
-                                  {pickupStatus.icon} {pickupStatus.label}
-                                </span>
-                              </div>
-                            )}
+
+                            {/* Delivery Details */}
+                            {order.deliveryMethod === "Delivery" &&
+                              order.deliveryAddress && (
+                                <div className="text-xs text-gray-600 ml-6">
+                                  {order.deliveryAddress.street &&
+                                  order.deliveryAddress.suburb &&
+                                  order.deliveryAddress.state &&
+                                  order.deliveryAddress.postcode ? (
+                                    <div>
+                                      🏠 {order.deliveryAddress.street}
+                                      <br />
+                                      {order.deliveryAddress.suburb}{" "}
+                                      {order.deliveryAddress.state}{" "}
+                                      {order.deliveryAddress.postcode}
+                                      {order.deliveryAddress.instructions && (
+                                        <div className="mt-1 text-gray-500 italic">
+                                          "
+                                          {order.deliveryAddress.instructions
+                                            .length > 30
+                                            ? order.deliveryAddress.instructions.substring(
+                                                0,
+                                                30
+                                              ) + "..."
+                                            : order.deliveryAddress
+                                                .instructions}
+                                          "
+                                        </div>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <span className="text-yellow-600">
+                                      ⚠️ Delivery address not set
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+
+                            {/* Payment Method */}
                             {order.paymentMethod && (
-                              <div className="text-xs text-gray-500 mt-1">
+                              <div className="text-xs text-gray-500 mt-2 ml-6">
                                 {order.paymentMethod === "Cash" ? "💵" : "💳"}{" "}
                                 {order.paymentMethod}
+                                {order.paymentMethod === "Cash" &&
+                                  order.price && (
+                                    <span className="text-yellow-600">
+                                      {" "}
+                                      (Exact: ${order.price.toFixed(2)})
+                                    </span>
+                                  )}
+                                {order.paymentMethod === "Card" && (
+                                  <span className="text-blue-600">
+                                    {" "}
+                                    (Invoice sent)
+                                  </span>
+                                )}
                               </div>
                             )}
+
+                            {/* No details provided */}
                             {!order.deliveryMethod &&
                               order.stage === "Completed" && (
                                 <span className="text-xs text-red-600">
-                                  Details needed
+                                  ⚠️ Collection details needed
                                 </span>
                               )}
                           </div>

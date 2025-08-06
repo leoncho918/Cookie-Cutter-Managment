@@ -1,4 +1,4 @@
-// Enhanced completion modal component that shows pickup details
+// Enhanced completion modal component with delivery address and payment notifications
 // This replaces the completion modal in OrderDetail.js
 
 import React, { useState } from "react";
@@ -27,6 +27,34 @@ const CompletionModal = ({
         pickupTime: "",
         pickupNotes: "",
       }),
+      // Clear delivery-specific fields if switching to pickup
+      ...(method === "Pickup" && {
+        deliveryAddress: {
+          street: "",
+          suburb: "",
+          state: "",
+          postcode: "",
+          country: "",
+          instructions: "",
+        },
+      }),
+    }));
+  };
+
+  const handlePaymentMethodChange = (method) => {
+    setCompletionData((prev) => ({
+      ...prev,
+      paymentMethod: method,
+    }));
+  };
+
+  const handleDeliveryAddressChange = (field, value) => {
+    setCompletionData((prev) => ({
+      ...prev,
+      deliveryAddress: {
+        ...prev.deliveryAddress,
+        [field]: value,
+      },
     }));
   };
 
@@ -39,7 +67,45 @@ const CompletionModal = ({
       return completionData.pickupDate && completionData.pickupTime;
     }
 
+    if (completionData.deliveryMethod === "Delivery") {
+      const { deliveryAddress } = completionData;
+      return (
+        deliveryAddress &&
+        deliveryAddress.street &&
+        deliveryAddress.suburb &&
+        deliveryAddress.state &&
+        deliveryAddress.postcode
+      );
+    }
+
     return true;
+  };
+
+  const getPaymentNotification = () => {
+    if (!completionData.paymentMethod) return null;
+
+    if (completionData.paymentMethod === "Card") {
+      return {
+        type: "info",
+        icon: "💳",
+        title: "Card Payment",
+        message:
+          "An invoice will be sent to your registered email address for card payment processing.",
+      };
+    } else if (completionData.paymentMethod === "Cash") {
+      return {
+        type: "warning",
+        icon: "💵",
+        title: "Cash Payment",
+        message: order.price
+          ? `Please bring exactly $${order.price.toFixed(
+              2
+            )}, or as close as possible, as we only carry coins for change.`
+          : "Please bring the exact amount, or as close as possible, as we only carry coins for change.",
+      };
+    }
+
+    return null;
   };
 
   // If showing pickup details, render that component
@@ -136,7 +202,7 @@ const CompletionModal = ({
                       2200
                     </div>
                     <div>
-                      <strong>Hours:</strong> Mon-Fri 9AM-5PM, Sat 10AM-2PM
+                      <strong>Hours:</strong> Mon-Sun 9AM-11:59PM
                     </div>
                   </div>
                   <Button
@@ -200,16 +266,144 @@ const CompletionModal = ({
                 <div className="mt-2 pt-3 border-t border-green-200">
                   <div className="text-sm text-green-700">
                     <div>
-                      <strong>Note:</strong> Delivery arrangements will be
-                      coordinated separately
+                      <strong>Note:</strong> Please provide your delivery
+                      address below
                     </div>
-                    <div>You will be contacted to arrange delivery details</div>
+                    <div>
+                      Delivery arrangements will be coordinated after
+                      confirmation
+                    </div>
+                    <div>
+                      <strong>
+                        Please note that a delivery fee will be added to your
+                        order total
+                      </strong>
+                    </div>
                   </div>
                 </div>
               )}
             </label>
           </div>
         </div>
+
+        {/* Delivery Address Form - Only show if Delivery is selected */}
+        {completionData.deliveryMethod === "Delivery" && (
+          <div className="bg-green-50 border border-green-200 rounded-lg p-6">
+            <h4 className="text-lg font-medium text-green-800 mb-4">
+              🏠 Delivery Address
+            </h4>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-green-700 mb-1">
+                  Street Address *
+                </label>
+                <input
+                  type="text"
+                  value={completionData.deliveryAddress?.street || ""}
+                  onChange={(e) =>
+                    handleDeliveryAddressChange("street", e.target.value)
+                  }
+                  placeholder="e.g., 123 Main Street"
+                  required
+                  className="w-full border border-green-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-green-700 mb-1">
+                  Suburb *
+                </label>
+                <input
+                  type="text"
+                  value={completionData.deliveryAddress?.suburb || ""}
+                  onChange={(e) =>
+                    handleDeliveryAddressChange("suburb", e.target.value)
+                  }
+                  placeholder="e.g., Bankstown"
+                  required
+                  className="w-full border border-green-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-green-700 mb-1">
+                  State *
+                </label>
+                <select
+                  value={completionData.deliveryAddress?.state || ""}
+                  onChange={(e) =>
+                    handleDeliveryAddressChange("state", e.target.value)
+                  }
+                  required
+                  className="w-full border border-green-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+                >
+                  <option value="">Select state...</option>
+                  <option value="NSW">NSW</option>
+                  <option value="VIC">VIC</option>
+                  <option value="QLD">QLD</option>
+                  <option value="WA">WA</option>
+                  <option value="SA">SA</option>
+                  <option value="TAS">TAS</option>
+                  <option value="ACT">ACT</option>
+                  <option value="NT">NT</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-green-700 mb-1">
+                  Postcode *
+                </label>
+                <input
+                  type="text"
+                  value={completionData.deliveryAddress?.postcode || ""}
+                  onChange={(e) =>
+                    handleDeliveryAddressChange("postcode", e.target.value)
+                  }
+                  placeholder="e.g., 2200"
+                  pattern="[0-9]{4}"
+                  maxLength="4"
+                  required
+                  className="w-full border border-green-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-green-700 mb-1">
+                  Country
+                </label>
+                <input
+                  type="text"
+                  value={completionData.deliveryAddress?.country || "Australia"}
+                  onChange={(e) =>
+                    handleDeliveryAddressChange("country", e.target.value)
+                  }
+                  className="w-full border border-green-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-green-700 mb-1">
+                  Delivery Instructions (Optional)
+                </label>
+                <textarea
+                  value={completionData.deliveryAddress?.instructions || ""}
+                  onChange={(e) =>
+                    handleDeliveryAddressChange("instructions", e.target.value)
+                  }
+                  placeholder="Any special delivery instructions..."
+                  rows={3}
+                  maxLength={500}
+                  className="w-full border border-green-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+                />
+                <div className="text-xs text-green-600 mt-1">
+                  {(completionData.deliveryAddress?.instructions || "").length}
+                  /500 characters
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Pickup Scheduling - Only show if Pickup is selected */}
         {completionData.deliveryMethod === "Pickup" && (
@@ -271,6 +465,12 @@ const CompletionModal = ({
                   <option value="16:00">4:00 PM</option>
                   <option value="16:30">4:30 PM</option>
                   <option value="17:00">5:00 PM</option>
+                  <option value="21:00">9:00 PM</option>
+                  <option value="21:30">9:30 PM</option>
+                  <option value="22:00">10:00 PM</option>
+                  <option value="22:30">10:30 PM</option>
+                  <option value="23:00">11:00 PM</option>
+                  <option value="23:30">11:30 PM</option>
                 </select>
               </div>
             </div>
@@ -321,12 +521,7 @@ const CompletionModal = ({
                 name="paymentMethod"
                 value="Cash"
                 checked={completionData.paymentMethod === "Cash"}
-                onChange={(e) =>
-                  setCompletionData((prev) => ({
-                    ...prev,
-                    paymentMethod: e.target.value,
-                  }))
-                }
+                onChange={(e) => handlePaymentMethodChange(e.target.value)}
                 className="sr-only"
               />
               <div className="flex items-center justify-between w-full">
@@ -369,12 +564,7 @@ const CompletionModal = ({
                 name="paymentMethod"
                 value="Card"
                 checked={completionData.paymentMethod === "Card"}
-                onChange={(e) =>
-                  setCompletionData((prev) => ({
-                    ...prev,
-                    paymentMethod: e.target.value,
-                  }))
-                }
+                onChange={(e) => handlePaymentMethodChange(e.target.value)}
                 className="sr-only"
               />
               <div className="flex items-center justify-between w-full">
@@ -403,6 +593,43 @@ const CompletionModal = ({
           </div>
         </div>
 
+        {/* Payment Method Notification */}
+        {getPaymentNotification() && (
+          <div
+            className={`p-4 rounded-lg border ${
+              getPaymentNotification().type === "warning"
+                ? "bg-yellow-50 border-yellow-200"
+                : "bg-blue-50 border-blue-200"
+            }`}
+          >
+            <div className="flex items-start">
+              <div className="flex-shrink-0 mt-0.5">
+                <span className="text-lg">{getPaymentNotification().icon}</span>
+              </div>
+              <div className="ml-3">
+                <h4
+                  className={`text-sm font-medium ${
+                    getPaymentNotification().type === "warning"
+                      ? "text-yellow-800"
+                      : "text-blue-800"
+                  }`}
+                >
+                  {getPaymentNotification().title}
+                </h4>
+                <p
+                  className={`mt-1 text-sm ${
+                    getPaymentNotification().type === "warning"
+                      ? "text-yellow-700"
+                      : "text-blue-700"
+                  }`}
+                >
+                  {getPaymentNotification().message}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Summary */}
         {completionData.deliveryMethod && completionData.paymentMethod && (
           <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
@@ -428,6 +655,7 @@ const CompletionModal = ({
                   {completionData.paymentMethod}
                 </span>
               </div>
+
               {completionData.deliveryMethod === "Pickup" &&
                 completionData.pickupDate &&
                 completionData.pickupTime && (
@@ -441,6 +669,30 @@ const CompletionModal = ({
                     </span>
                   </div>
                 )}
+
+              {completionData.deliveryMethod === "Delivery" &&
+                completionData.deliveryAddress &&
+                completionData.deliveryAddress.street && (
+                  <div className="pt-2 border-t border-gray-300">
+                    <span className="font-medium">Delivery Address:</span>
+                    <div className="text-xs text-gray-600 mt-1">
+                      {completionData.deliveryAddress.street}
+                      <br />
+                      {completionData.deliveryAddress.suburb}{" "}
+                      {completionData.deliveryAddress.state}{" "}
+                      {completionData.deliveryAddress.postcode}
+                      <br />
+                      {completionData.deliveryAddress.country}
+                      {completionData.deliveryAddress.instructions && (
+                        <div className="mt-1">
+                          <strong>Instructions:</strong>{" "}
+                          {completionData.deliveryAddress.instructions}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
               {order.price && (
                 <div className="flex justify-between pt-2 border-t border-gray-300 font-semibold">
                   <span>Total Amount:</span>

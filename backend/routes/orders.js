@@ -805,7 +805,9 @@ router.put("/:id/completion", async (req, res) => {
         .json({ message: "Only bakers can update completion details" });
     }
 
-    const { deliveryMethod, paymentMethod, pickupSchedule } = req.body;
+    const { deliveryMethod, paymentMethod, pickupSchedule, deliveryAddress } =
+      req.body;
+
     const order = await Order.findById(req.params.id);
 
     if (!order) {
@@ -865,11 +867,78 @@ router.put("/:id/completion", async (req, res) => {
       }
     }
 
+    // Validate delivery address if delivery method is Delivery
+    if (deliveryMethod === "Delivery") {
+      if (
+        !deliveryAddress ||
+        !deliveryAddress.street ||
+        !deliveryAddress.suburb ||
+        !deliveryAddress.state ||
+        !deliveryAddress.postcode
+      ) {
+        return res.status(400).json({
+          message:
+            "Complete delivery address is required when delivery method is Delivery",
+        });
+      }
+
+      // Validate address field lengths
+      if (deliveryAddress.street && deliveryAddress.street.length > 200) {
+        return res.status(400).json({
+          message: "Street address cannot exceed 200 characters",
+        });
+      }
+
+      if (deliveryAddress.suburb && deliveryAddress.suburb.length > 100) {
+        return res.status(400).json({
+          message: "Suburb cannot exceed 100 characters",
+        });
+      }
+
+      if (deliveryAddress.state && deliveryAddress.state.length > 50) {
+        return res.status(400).json({
+          message: "State cannot exceed 50 characters",
+        });
+      }
+
+      if (deliveryAddress.postcode && deliveryAddress.postcode.length > 10) {
+        return res.status(400).json({
+          message: "Postcode cannot exceed 10 characters",
+        });
+      }
+
+      if (deliveryAddress.country && deliveryAddress.country.length > 100) {
+        return res.status(400).json({
+          message: "Country cannot exceed 100 characters",
+        });
+      }
+
+      if (
+        deliveryAddress.instructions &&
+        deliveryAddress.instructions.length > 500
+      ) {
+        return res.status(400).json({
+          message: "Delivery instructions cannot exceed 500 characters",
+        });
+      }
+
+      // Validate postcode format for Australia (basic validation)
+      if (deliveryAddress.country === "Australia" || !deliveryAddress.country) {
+        const postcodeRegex = /^[0-9]{4}$/;
+        if (!postcodeRegex.test(deliveryAddress.postcode)) {
+          return res.status(400).json({
+            message: "Australian postcode must be 4 digits",
+          });
+        }
+      }
+    }
+
     // Store original values for logging
     const originalCompletion = {
       deliveryMethod: order.deliveryMethod,
       paymentMethod: order.paymentMethod,
       pickupSchedule: order.pickupSchedule,
+      deliveryAddress: order.deliveryAddress,
     };
 
     // Update completion details
@@ -883,8 +952,25 @@ router.put("/:id/completion", async (req, res) => {
         time: pickupSchedule.time,
         notes: pickupSchedule.notes || "",
       };
-    } else {
-      // Clear pickup schedule if delivery method is not Pickup
+      // Clear delivery address if switching to pickup
+      order.deliveryAddress = undefined;
+    }
+
+    // Update delivery address if delivery method is Delivery
+    if (deliveryMethod === "Delivery") {
+      order.deliveryAddress = {
+        street: deliveryAddress.street.trim(),
+        suburb: deliveryAddress.suburb.trim(),
+        state: deliveryAddress.state.trim(),
+        postcode: deliveryAddress.postcode.trim(),
+        country: deliveryAddress.country
+          ? deliveryAddress.country.trim()
+          : "Australia",
+        instructions: deliveryAddress.instructions
+          ? deliveryAddress.instructions.trim()
+          : "",
+      };
+      // Clear pickup schedule if switching to delivery
       order.pickupSchedule = undefined;
     }
 
@@ -894,13 +980,18 @@ router.put("/:id/completion", async (req, res) => {
       orderId: order._id,
       orderNumber: order.orderNumber,
       updatedBy: req.user.email,
+      deliveryMethod: deliveryMethod,
+      paymentMethod: paymentMethod,
+      hasPickupSchedule: deliveryMethod === "Pickup" && !!pickupSchedule,
+      hasDeliveryAddress: deliveryMethod === "Delivery" && !!deliveryAddress,
       changes: {
         deliveryMethod: `${originalCompletion.deliveryMethod} → ${deliveryMethod}`,
         paymentMethod: `${originalCompletion.paymentMethod} → ${paymentMethod}`,
+        addressProvided: deliveryMethod === "Delivery" ? "Yes" : "N/A",
         pickupScheduled:
           deliveryMethod === "Pickup"
             ? `${pickupSchedule.date} at ${pickupSchedule.time}`
-            : "Not applicable",
+            : "N/A",
       },
     });
 

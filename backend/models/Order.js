@@ -1,4 +1,4 @@
-// models/Order.js - Enhanced Order model with pickup date/time
+// models/Order.js - Enhanced Order model with delivery address support
 const mongoose = require("mongoose");
 
 const itemSchema = new mongoose.Schema({
@@ -92,7 +92,7 @@ const orderSchema = new mongoose.Schema({
     type: String,
     enum: ["Cash", "Card"],
   },
-  // NEW: Pickup scheduling for when deliveryMethod is "Pickup"
+  // Pickup scheduling for when deliveryMethod is "Pickup"
   pickupSchedule: {
     date: {
       type: Date,
@@ -101,6 +101,34 @@ const orderSchema = new mongoose.Schema({
       type: String, // Store time as "HH:MM" format
     },
     notes: {
+      type: String,
+      maxlength: 500,
+    },
+  },
+  // NEW: Delivery address for when deliveryMethod is "Delivery"
+  deliveryAddress: {
+    street: {
+      type: String,
+      maxlength: 200,
+    },
+    suburb: {
+      type: String,
+      maxlength: 100,
+    },
+    state: {
+      type: String,
+      maxlength: 50,
+    },
+    postcode: {
+      type: String,
+      maxlength: 10,
+    },
+    country: {
+      type: String,
+      maxlength: 100,
+      default: "Australia",
+    },
+    instructions: {
       type: String,
       maxlength: 500,
     },

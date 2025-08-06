@@ -69,6 +69,14 @@ const OrderDetail = () => {
     pickupDate: "",
     pickupTime: "",
     pickupNotes: "",
+    deliveryAddress: {
+      street: "",
+      suburb: "",
+      state: "",
+      postcode: "",
+      country: "Australia",
+      instructions: "",
+    },
   });
   const [showPickupDetails, setShowPickupDetails] = useState(false);
   const [uploadingImages, setUploadingImages] = useState({});
@@ -361,6 +369,7 @@ const OrderDetail = () => {
       pickupDate,
       pickupTime,
       pickupNotes,
+      deliveryAddress,
     } = completionModal;
 
     // Validation
@@ -389,6 +398,28 @@ const OrderDetail = () => {
       }
     }
 
+    // If delivery is selected, validate delivery address
+    if (deliveryMethod === "Delivery") {
+      if (
+        !deliveryAddress.street ||
+        !deliveryAddress.suburb ||
+        !deliveryAddress.state ||
+        !deliveryAddress.postcode
+      ) {
+        showError("Please provide a complete delivery address");
+        return;
+      }
+
+      // Validate postcode format for Australia
+      if (deliveryAddress.country === "Australia" || !deliveryAddress.country) {
+        const postcodeRegex = /^[0-9]{4}$/;
+        if (!postcodeRegex.test(deliveryAddress.postcode)) {
+          showError("Australian postcode must be 4 digits");
+          return;
+        }
+      }
+    }
+
     try {
       setActionLoading(true);
 
@@ -406,6 +437,20 @@ const OrderDetail = () => {
         };
       }
 
+      // Add delivery address if delivery is selected
+      if (deliveryMethod === "Delivery") {
+        payload.deliveryAddress = {
+          street: deliveryAddress.street.trim(),
+          suburb: deliveryAddress.suburb.trim(),
+          state: deliveryAddress.state.trim(),
+          postcode: deliveryAddress.postcode.trim(),
+          country: deliveryAddress.country || "Australia",
+          instructions: deliveryAddress.instructions
+            ? deliveryAddress.instructions.trim()
+            : "",
+        };
+      }
+
       await axios.put(`/orders/${id}/completion`, payload);
 
       showSuccess("Completion details updated successfully");
@@ -417,6 +462,14 @@ const OrderDetail = () => {
         pickupDate: "",
         pickupTime: "",
         pickupNotes: "",
+        deliveryAddress: {
+          street: "",
+          suburb: "",
+          state: "",
+          postcode: "",
+          country: "Australia",
+          instructions: "",
+        },
       });
     } catch (error) {
       console.error("Error updating completion details:", error);
@@ -745,13 +798,34 @@ const OrderDetail = () => {
     );
   };
 
+  const handleOpenCompletionModal = () => {
+    setCompletionModal({
+      isOpen: true,
+      deliveryMethod: order.deliveryMethod || "",
+      paymentMethod: order.paymentMethod || "",
+      pickupDate: order.pickupSchedule?.date
+        ? formatDateForInput(order.pickupSchedule.date)
+        : "",
+      pickupTime: order.pickupSchedule?.time || "",
+      pickupNotes: order.pickupSchedule?.notes || "",
+      deliveryAddress: {
+        street: order.deliveryAddress?.street || "",
+        suburb: order.deliveryAddress?.suburb || "",
+        state: order.deliveryAddress?.state || "",
+        postcode: order.deliveryAddress?.postcode || "",
+        country: order.deliveryAddress?.country || "Australia",
+        instructions: order.deliveryAddress?.instructions || "",
+      },
+    });
+  };
+
   const renderCompletionDetails = () => {
     if (order.stage !== ORDER_STAGES.COMPLETED) return null;
 
     return (
       <div className="mt-6 pt-4 border-t border-gray-200">
         <h4 className="text-sm font-medium text-gray-700 mb-3">
-          Pickup or Delivery Details
+          Collection & Payment Details
         </h4>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -848,28 +922,108 @@ const OrderDetail = () => {
           </div>
         )}
 
+        {/* Delivery Address Details */}
+        {order.deliveryMethod === "Delivery" && (
+          <div className="mt-6">
+            {order.deliveryAddress &&
+            order.deliveryAddress.street &&
+            order.deliveryAddress.suburb &&
+            order.deliveryAddress.state &&
+            order.deliveryAddress.postcode ? (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                <div>
+                  <h5 className="text-sm font-medium text-green-800 mb-2">
+                    🏠 Delivery Address
+                  </h5>
+                  <div className="text-green-700 space-y-1">
+                    <div className="font-semibold">
+                      {order.deliveryAddress.street}
+                    </div>
+                    <div>
+                      {order.deliveryAddress.suburb}{" "}
+                      {order.deliveryAddress.state}{" "}
+                      {order.deliveryAddress.postcode}
+                    </div>
+                    <div>{order.deliveryAddress.country || "Australia"}</div>
+                    {order.deliveryAddress.instructions && (
+                      <div className="text-sm mt-2">
+                        <strong>Delivery Instructions:</strong>{" "}
+                        {order.deliveryAddress.instructions}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                <div className="flex items-center">
+                  <span className="text-yellow-600 text-xl mr-3">⚠️</span>
+                  <div>
+                    <h5 className="text-sm font-medium text-yellow-800">
+                      Delivery Address Needed
+                    </h5>
+                    <p className="text-yellow-700 text-sm">
+                      Please provide your delivery address to complete the order
+                      process.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Payment Method Notifications */}
+        {order.paymentMethod && (
+          <div className="mt-6">
+            {order.paymentMethod === "Card" && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="flex items-start">
+                  <span className="text-blue-600 text-lg mr-3">💳</span>
+                  <div>
+                    <h5 className="text-sm font-medium text-blue-800">
+                      Card Payment Information
+                    </h5>
+                    <p className="text-blue-700 text-sm mt-1">
+                      An invoice will be sent to your registered email address (
+                      {order.bakerEmail}) for card payment processing.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {order.paymentMethod === "Cash" && order.price && (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                <div className="flex items-start">
+                  <span className="text-yellow-600 text-lg mr-3">💵</span>
+                  <div>
+                    <h5 className="text-sm font-medium text-yellow-800">
+                      Cash Payment Information
+                    </h5>
+                    <p className="text-yellow-700 text-sm mt-1">
+                      Please bring exactly{" "}
+                      <strong>${order.price.toFixed(2)}</strong> as there might
+                      not be enough cash available for change.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Action button for bakers to update details */}
         {user.role === "baker" && order.bakerId === user.bakerId && (
           <div className="mt-4">
             <Button
               variant="primary"
               size="small"
-              onClick={() =>
-                setCompletionModal({
-                  isOpen: true,
-                  deliveryMethod: order.deliveryMethod || "",
-                  paymentMethod: order.paymentMethod || "",
-                  pickupDate: order.pickupSchedule?.date
-                    ? formatDateForInput(order.pickupSchedule.date)
-                    : "",
-                  pickupTime: order.pickupSchedule?.time || "",
-                  pickupNotes: order.pickupSchedule?.notes || "",
-                })
-              }
+              onClick={handleOpenCompletionModal}
             >
               {order.deliveryMethod && order.paymentMethod
                 ? "Update Details"
-                : "Confirm Pickup or Delivery Details"}
+                : "Set Collection & Payment Details"}
             </Button>
           </div>
         )}
