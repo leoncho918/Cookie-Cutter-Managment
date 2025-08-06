@@ -1,4 +1,4 @@
-// routes/orders.js - Enhanced orders routes with baker email filtering
+// routes/orders.js - Enhanced with baker editing permissions for Draft and Requested Changes stages
 const express = require("express");
 const Order = require("../models/Order");
 const { requireAdmin, requireBakerOrAdmin } = require("../middleware/auth");
@@ -6,6 +6,20 @@ const { sendOrderStageChangeEmail } = require("../utils/email");
 const { emitOrderUpdate } = require("../utils/socketUtils");
 
 const router = express.Router();
+
+// Helper function to check if baker can edit order
+const canBakerEditOrder = (order, user) => {
+  return (
+    user.role === "baker" &&
+    order.bakerId === user.bakerId &&
+    (order.stage === "Draft" || order.stage === "Requested Changes")
+  );
+};
+
+// Helper function to check editing permissions
+const canEditOrder = (order, user) => {
+  return user.role === "admin" || canBakerEditOrder(order, user);
+};
 
 // Get all orders (with enhanced filtering including baker email)
 router.get("/", requireBakerOrAdmin, async (req, res) => {
@@ -23,7 +37,7 @@ router.get("/", requireBakerOrAdmin, async (req, res) => {
     if (stage) query.stage = stage;
     if (bakerId && req.user.role === "admin") query.bakerId = bakerId;
 
-    // NEW: Baker email filtering (admin only)
+    // Baker email filtering (admin only)
     if (bakerEmail && req.user.role === "admin") {
       query.bakerEmail = { $regex: new RegExp(bakerEmail, "i") }; // Case-insensitive search
     }
@@ -192,7 +206,7 @@ router.post("/", async (req, res) => {
   }
 });
 
-// Update order (Baker can update draft orders, Admin can update any)
+// Enhanced update order - supports baker editing in Draft and Requested Changes stages
 router.put("/:id", requireBakerOrAdmin, async (req, res) => {
   try {
     const order = await Order.findById(req.params.id);
@@ -201,14 +215,21 @@ router.put("/:id", requireBakerOrAdmin, async (req, res) => {
       return res.status(404).json({ message: "Order not found" });
     }
 
-    // Check permissions
-    if (req.user.role === "baker") {
-      if (order.bakerId !== req.user.bakerId) {
-        return res.status(403).json({ message: "Access denied to this order" });
+    // Enhanced permission checking
+    if (!canEditOrder(order, req.user)) {
+      if (req.user.role === "baker") {
+        if (order.bakerId !== req.user.bakerId) {
+          return res
+            .status(403)
+            .json({ message: "Access denied to this order" });
+        }
+        return res.status(403).json({
+          message: "Can only edit orders in Draft or Requested Changes stages",
+          currentStage: order.stage,
+          allowedStages: ["Draft", "Requested Changes"],
+        });
       }
-      if (order.stage !== "Draft") {
-        return res.status(403).json({ message: "Can only edit draft orders" });
-      }
+      return res.status(403).json({ message: "Access denied" });
     }
 
     const { dateRequired, items, additionalComments } = req.body;
@@ -231,6 +252,8 @@ router.put("/:id", requireBakerOrAdmin, async (req, res) => {
       orderId: order._id,
       orderNumber: order.orderNumber,
       updatedBy: req.user.email,
+      userRole: req.user.role,
+      orderStage: order.stage,
       changes: {
         dateChanged:
           originalOrder.dateRequired.getTime() !== order.dateRequired.getTime(),
@@ -393,27 +416,30 @@ router.put("/:id/stage", requireBakerOrAdmin, async (req, res) => {
   }
 });
 
-// Add item to order (Baker only, draft orders only)
+// Enhanced add item - supports baker adding in Draft and Requested Changes stages
 router.post("/:id/items", async (req, res) => {
   try {
-    if (req.user.role !== "baker") {
-      return res.status(403).json({ message: "Only bakers can add items" });
-    }
-
     const order = await Order.findById(req.params.id);
 
     if (!order) {
       return res.status(404).json({ message: "Order not found" });
     }
 
-    if (order.bakerId !== req.user.bakerId) {
-      return res.status(403).json({ message: "Access denied to this order" });
-    }
-
-    if (order.stage !== "Draft") {
-      return res
-        .status(403)
-        .json({ message: "Can only add items to draft orders" });
+    // Enhanced permission checking
+    if (!canEditOrder(order, req.user)) {
+      if (req.user.role === "baker") {
+        if (order.bakerId !== req.user.bakerId) {
+          return res
+            .status(403)
+            .json({ message: "Access denied to this order" });
+        }
+        return res.status(403).json({
+          message: "Can only add items in Draft or Requested Changes stages",
+          currentStage: order.stage,
+          allowedStages: ["Draft", "Requested Changes"],
+        });
+      }
+      return res.status(403).json({ message: "Access denied" });
     }
 
     const { type, measurement, additionalComments } = req.body;
@@ -454,6 +480,7 @@ router.post("/:id/items", async (req, res) => {
       measurement: measurement,
       totalItems: order.items.length,
       addedBy: req.user.email,
+      orderStage: order.stage,
     });
 
     // Emit real-time update
@@ -479,7 +506,7 @@ router.post("/:id/items", async (req, res) => {
   }
 });
 
-// Update item in order
+// Enhanced update item - supports baker editing in Draft and Requested Changes stages
 router.put("/:id/items/:itemId", requireBakerOrAdmin, async (req, res) => {
   try {
     const order = await Order.findById(req.params.id);
@@ -488,16 +515,21 @@ router.put("/:id/items/:itemId", requireBakerOrAdmin, async (req, res) => {
       return res.status(404).json({ message: "Order not found" });
     }
 
-    // Check permissions
-    if (req.user.role === "baker") {
-      if (order.bakerId !== req.user.bakerId) {
-        return res.status(403).json({ message: "Access denied to this order" });
+    // Enhanced permission checking
+    if (!canEditOrder(order, req.user)) {
+      if (req.user.role === "baker") {
+        if (order.bakerId !== req.user.bakerId) {
+          return res
+            .status(403)
+            .json({ message: "Access denied to this order" });
+        }
+        return res.status(403).json({
+          message: "Can only edit items in Draft or Requested Changes stages",
+          currentStage: order.stage,
+          allowedStages: ["Draft", "Requested Changes"],
+        });
       }
-      if (order.stage !== "Draft") {
-        return res
-          .status(403)
-          .json({ message: "Can only edit items in draft orders" });
-      }
+      return res.status(403).json({ message: "Access denied" });
     }
 
     const item = order.items.id(req.params.itemId);
@@ -552,6 +584,7 @@ router.put("/:id/items/:itemId", requireBakerOrAdmin, async (req, res) => {
       orderNumber: order.orderNumber,
       itemId: req.params.itemId,
       updatedBy: req.user.email,
+      orderStage: order.stage,
       changes: {
         typeChanged: originalItem.type !== item.type,
         measurementChanged:
@@ -584,7 +617,7 @@ router.put("/:id/items/:itemId", requireBakerOrAdmin, async (req, res) => {
   }
 });
 
-// Delete item from order
+// Enhanced delete item - supports baker deleting in Draft and Requested Changes stages
 router.delete("/:id/items/:itemId", requireBakerOrAdmin, async (req, res) => {
   try {
     console.log("🗑️ Delete item request received:", {
@@ -601,18 +634,23 @@ router.delete("/:id/items/:itemId", requireBakerOrAdmin, async (req, res) => {
       return res.status(404).json({ message: "Order not found" });
     }
 
-    // Check permissions
-    if (req.user.role === "baker") {
-      if (order.bakerId !== req.user.bakerId) {
-        console.log("❌ Access denied - baker doesn't own order");
-        return res.status(403).json({ message: "Access denied to this order" });
+    // Enhanced permission checking
+    if (!canEditOrder(order, req.user)) {
+      if (req.user.role === "baker") {
+        if (order.bakerId !== req.user.bakerId) {
+          console.log("❌ Access denied - baker doesn't own order");
+          return res
+            .status(403)
+            .json({ message: "Access denied to this order" });
+        }
+        console.log("❌ Cannot delete from order in stage:", order.stage);
+        return res.status(403).json({
+          message: "Can only delete items in Draft or Requested Changes stages",
+          currentStage: order.stage,
+          allowedStages: ["Draft", "Requested Changes"],
+        });
       }
-      if (order.stage !== "Draft") {
-        console.log("❌ Cannot delete from non-draft order:", order.stage);
-        return res
-          .status(403)
-          .json({ message: "Can only delete items from draft orders" });
-      }
+      return res.status(403).json({ message: "Access denied" });
     }
 
     const item = order.items.id(req.params.itemId);
@@ -644,6 +682,7 @@ router.delete("/:id/items/:itemId", requireBakerOrAdmin, async (req, res) => {
       orderNumber: order.orderNumber,
       itemId: req.params.itemId,
       deletedBy: req.user.email,
+      orderStage: order.stage,
       deletedItem: deletedItemInfo,
       remainingItems: order.items.length,
     });
@@ -675,7 +714,7 @@ router.delete("/:id/items/:itemId", requireBakerOrAdmin, async (req, res) => {
   }
 });
 
-// Delete entire order
+// Enhanced delete entire order - supports baker deleting in Draft and Requested Changes stages
 router.delete("/:id", requireBakerOrAdmin, async (req, res) => {
   try {
     const order = await Order.findById(req.params.id);
@@ -684,15 +723,19 @@ router.delete("/:id", requireBakerOrAdmin, async (req, res) => {
       return res.status(404).json({ message: "Order not found" });
     }
 
-    // Check permissions
+    // Enhanced permission checking for order deletion
     if (req.user.role === "baker") {
       if (order.bakerId !== req.user.bakerId) {
         return res.status(403).json({ message: "Access denied to this order" });
       }
-      if (order.stage !== "Draft") {
-        return res
-          .status(403)
-          .json({ message: "Can only delete draft orders" });
+      // Bakers can delete in Draft or Requested Changes stages
+      if (order.stage !== "Draft" && order.stage !== "Requested Changes") {
+        return res.status(403).json({
+          message:
+            "Can only delete orders in Draft or Requested Changes stages",
+          currentStage: order.stage,
+          allowedStages: ["Draft", "Requested Changes"],
+        });
       }
     }
 

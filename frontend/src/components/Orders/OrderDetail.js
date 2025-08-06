@@ -1,4 +1,4 @@
-// src/components/Orders/OrderDetail.js - Complete OrderDetail with enhanced Socket.IO integration
+// src/components/Orders/OrderDetail.js - Enhanced with baker editing in Draft and Requested Changes stages
 import React, { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
@@ -626,9 +626,18 @@ const OrderDetail = () => {
     }
   };
 
-  // Permission checks
+  // Enhanced permission checks for baker editing
+  const canBakerEdit = () => {
+    return (
+      user.role === "baker" &&
+      order.bakerId === user.bakerId &&
+      (order.stage === ORDER_STAGES.DRAFT ||
+        order.stage === ORDER_STAGES.REQUESTED_CHANGES)
+    );
+  };
+
   const canUploadInspirationImages = () => {
-    return user.role === "baker" && order.bakerId === user.bakerId;
+    return canBakerEdit() || user.role === "admin";
   };
 
   const canUploadPreviewImages = () => {
@@ -636,10 +645,7 @@ const OrderDetail = () => {
   };
 
   const canDeleteInspirationImages = () => {
-    return (
-      (user.role === "baker" && order.bakerId === user.bakerId) ||
-      user.role === "admin"
-    );
+    return canBakerEdit() || user.role === "admin";
   };
 
   const canDeletePreviewImages = () => {
@@ -647,11 +653,15 @@ const OrderDetail = () => {
   };
 
   const canAddItems = () => {
-    return (
-      user.role === "baker" &&
-      order.bakerId === user.bakerId &&
-      order.stage === ORDER_STAGES.DRAFT
-    );
+    return canBakerEdit();
+  };
+
+  const canEditItems = () => {
+    return canBakerEdit() || user.role === "admin";
+  };
+
+  const canDeleteItems = () => {
+    return canBakerEdit() || user.role === "admin";
   };
 
   // Enhanced connection status display
@@ -740,6 +750,29 @@ const OrderDetail = () => {
           </div>
         </div>
       </div>
+
+      {/* Baker Edit Notice */}
+      {canBakerEdit() && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div className="flex items-center">
+            <div className="flex-shrink-0">
+              <span className="text-blue-500 text-lg">✏️</span>
+            </div>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-blue-800">
+                Editing Enabled
+              </h3>
+              <div className="mt-1 text-sm text-blue-700">
+                <p>
+                  You can edit item properties, upload/delete inspiration
+                  images, and add/remove items while your order is in{" "}
+                  <strong>{order.stage}</strong> stage.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Order Status */}
       <div className="bg-white shadow rounded-lg p-6">
@@ -1044,7 +1077,7 @@ const OrderDetail = () => {
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-lg font-medium text-gray-900">Order Items</h3>
 
-          {/* Add Item Button for Bakers in Draft Stage */}
+          {/* Add Item Button for Bakers in editable stages */}
           {canAddItems() && (
             <Button
               variant="primary"
@@ -1053,6 +1086,10 @@ const OrderDetail = () => {
                 setAddItemModal({
                   isOpen: true,
                   type: ITEM_TYPES.CUTTER,
+                  measurement: {
+                    value: "",
+                    unit: MEASUREMENT_UNITS.CM,
+                  },
                   additionalComments: "",
                 })
               }
@@ -1074,20 +1111,23 @@ const OrderDetail = () => {
                     Item {index + 1}: {item.type}
                   </h4>
 
-                  {canEditOrder(order, user) && (
+                  {canEditItems() && (
                     <div className="flex space-x-2">
                       <button
                         onClick={() => setEditingItem(item._id)}
-                        className="text-blue-600 hover:text-blue-800 text-sm"
+                        className="text-blue-600 hover:text-blue-800 text-sm transition-colors"
+                        disabled={!canEditItems()}
                       >
                         Edit
                       </button>
-                      <button
-                        onClick={() => handleItemDelete(item._id)}
-                        className="text-red-600 hover:text-red-800 text-sm"
-                      >
-                        Delete
-                      </button>
+                      {canDeleteItems() && order.items.length > 1 && (
+                        <button
+                          onClick={() => handleItemDelete(item._id)}
+                          className="text-red-600 hover:text-red-800 text-sm transition-colors"
+                        >
+                          Delete
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1097,6 +1137,7 @@ const OrderDetail = () => {
                     item={item}
                     onSave={(updates) => handleItemUpdate(item._id, updates)}
                     onCancel={() => setEditingItem(null)}
+                    canEdit={canEditItems()}
                   />
                 ) : (
                   <>
@@ -1132,11 +1173,13 @@ const OrderDetail = () => {
                           <h5 className="text-sm font-medium text-gray-700">
                             Inspiration Images:
                           </h5>
-                          {canDeleteInspirationImages() && (
+                          {canUploadInspirationImages() && (
                             <p className="text-xs text-gray-500 mt-1">
-                              {user.role === "baker"
-                                ? "You can upload and delete your inspiration images"
-                                : "As admin, you can delete any inspiration images"}
+                              {canBakerEdit()
+                                ? "You can upload and delete inspiration images while in this stage"
+                                : user.role === "admin"
+                                ? "As admin, you can upload and delete inspiration images at any time"
+                                : "Upload inspiration images to help us understand your vision"}
                             </p>
                           )}
                         </div>
@@ -1329,6 +1372,25 @@ const OrderDetail = () => {
           ) : (
             <div className="text-center py-8">
               <p className="text-gray-500">No items in this order.</p>
+              {canAddItems() && (
+                <Button
+                  variant="primary"
+                  onClick={() =>
+                    setAddItemModal({
+                      isOpen: true,
+                      type: ITEM_TYPES.CUTTER,
+                      measurement: {
+                        value: "",
+                        unit: MEASUREMENT_UNITS.CM,
+                      },
+                      additionalComments: "",
+                    })
+                  }
+                  className="mt-4"
+                >
+                  Add First Item
+                </Button>
+              )}
             </div>
           )}
         </div>
@@ -1504,6 +1566,10 @@ const OrderDetail = () => {
           setAddItemModal({
             isOpen: false,
             type: ITEM_TYPES.CUTTER,
+            measurement: {
+              value: "",
+              unit: MEASUREMENT_UNITS.CM,
+            },
             additionalComments: "",
           })
         }
@@ -1531,7 +1597,7 @@ const OrderDetail = () => {
           </div>
 
           {/* Measurement Fields */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Size *
@@ -1589,8 +1655,7 @@ const OrderDetail = () => {
               <p className="text-sm text-blue-700">
                 <strong>📏 Size Preview:</strong>{" "}
                 {addItemModal.measurement.value}
-                {addItemModal.measurement.unit} (
-                {addItemModal.measurement.dimension})
+                {addItemModal.measurement.unit}
               </p>
             </div>
           )}
@@ -1683,8 +1748,8 @@ const OrderDetail = () => {
   );
 };
 
-// Edit Item Form Component
-const EditItemForm = ({ item, onSave, onCancel }) => {
+// Enhanced Edit Item Form Component with better permissions
+const EditItemForm = ({ item, onSave, onCancel, canEdit = false }) => {
   const [formData, setFormData] = useState({
     type: item.type,
     measurement: {
@@ -1696,6 +1761,11 @@ const EditItemForm = ({ item, onSave, onCancel }) => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+
+    if (!canEdit) {
+      alert("You cannot edit this item in the current order stage.");
+      return;
+    }
 
     // Validate measurement
     const measurementValidation = validateMeasurement(formData.measurement);
@@ -1718,7 +1788,10 @@ const EditItemForm = ({ item, onSave, onCancel }) => {
           onChange={(e) =>
             setFormData((prev) => ({ ...prev, type: e.target.value }))
           }
-          className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          disabled={!canEdit}
+          className={`w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+            !canEdit ? "bg-gray-100 cursor-not-allowed" : ""
+          }`}
         >
           {Object.values(ITEM_TYPES).map((type) => (
             <option key={type} value={type}>
@@ -1729,7 +1802,7 @@ const EditItemForm = ({ item, onSave, onCancel }) => {
       </div>
 
       {/* Measurement Fields */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Size *
@@ -1751,7 +1824,10 @@ const EditItemForm = ({ item, onSave, onCancel }) => {
             max="1000"
             step="0.1"
             required
-            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            disabled={!canEdit}
+            className={`w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+              !canEdit ? "bg-gray-100 cursor-not-allowed" : ""
+            }`}
           />
         </div>
 
@@ -1770,7 +1846,10 @@ const EditItemForm = ({ item, onSave, onCancel }) => {
                 },
               }))
             }
-            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            disabled={!canEdit}
+            className={`w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+              !canEdit ? "bg-gray-100 cursor-not-allowed" : ""
+            }`}
           >
             {Object.values(MEASUREMENT_UNITS).map((unit) => (
               <option key={unit} value={unit}>
@@ -1786,7 +1865,7 @@ const EditItemForm = ({ item, onSave, onCancel }) => {
         <div className="p-3 bg-blue-50 rounded-md">
           <p className="text-sm text-blue-700">
             <strong>📏 Size Preview:</strong> {formData.measurement.value}
-            {formData.measurement.unit} ({formData.measurement.dimension})
+            {formData.measurement.unit}
           </p>
         </div>
       )}
@@ -1805,9 +1884,24 @@ const EditItemForm = ({ item, onSave, onCancel }) => {
           }
           rows={3}
           maxLength={1000}
-          className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          disabled={!canEdit}
+          className={`w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+            !canEdit ? "bg-gray-100 cursor-not-allowed" : ""
+          }`}
         />
+        <div className="text-xs text-gray-500 mt-1">
+          {formData.additionalComments.length}/1000 characters
+        </div>
       </div>
+
+      {!canEdit && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3">
+          <p className="text-sm text-yellow-700">
+            <strong>Note:</strong> Items can only be edited in Draft or
+            Requested Changes stages.
+          </p>
+        </div>
+      )}
 
       <div className="flex space-x-3">
         <Button type="button" variant="outline" onClick={onCancel}>
@@ -1816,7 +1910,7 @@ const EditItemForm = ({ item, onSave, onCancel }) => {
         <Button
           type="submit"
           variant="primary"
-          disabled={!formData.measurement.value}
+          disabled={!canEdit || !formData.measurement.value}
         >
           Save Changes
         </Button>
@@ -1825,7 +1919,7 @@ const EditItemForm = ({ item, onSave, onCancel }) => {
   );
 };
 
-// Image Gallery Component
+// Enhanced Image Gallery Component with better permissions display
 const ImageGallery = ({
   images,
   onDelete,

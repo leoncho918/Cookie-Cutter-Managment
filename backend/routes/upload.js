@@ -1,4 +1,4 @@
-// routes/upload.js - Complete image upload routes with white background for transparent images
+// routes/upload.js - Enhanced with baker editing permissions for Draft and Requested Changes stages
 const express = require("express");
 const multer = require("multer");
 const sharp = require("sharp");
@@ -31,6 +31,15 @@ const upload = multer({
     }
   },
 });
+
+// Helper function to check if baker can manage inspiration images
+const canBakerManageInspirationImages = (order, user) => {
+  return (
+    user.role === "baker" &&
+    order.bakerId === user.bakerId &&
+    (order.stage === "Draft" || order.stage === "Requested Changes")
+  );
+};
 
 // Helper function to upload image to S3
 const uploadToS3 = async (buffer, key, contentType) => {
@@ -119,7 +128,7 @@ const processImage = async (buffer, maxWidth = 1920, quality = 85) => {
   }
 };
 
-// Upload inspiration image (Baker only)
+// Enhanced upload inspiration image - supports baker upload in Draft and Requested Changes stages
 router.post(
   "/inspiration/:orderId/:itemId",
   requireBakerOrAdmin,
@@ -148,9 +157,26 @@ router.post(
         return res.status(404).json({ message: "Order not found" });
       }
 
-      // Check permissions
-      if (req.user.role === "baker" && order.bakerId !== req.user.bakerId) {
-        return res.status(403).json({ message: "Access denied to this order" });
+      // Enhanced permission checking for inspiration images
+      const canUpload =
+        req.user.role === "admin" ||
+        canBakerManageInspirationImages(order, req.user);
+
+      if (!canUpload) {
+        if (req.user.role === "baker") {
+          if (order.bakerId !== req.user.bakerId) {
+            return res
+              .status(403)
+              .json({ message: "Access denied to this order" });
+          }
+          return res.status(403).json({
+            message:
+              "Can only upload inspiration images in Draft or Requested Changes stages",
+            currentStage: order.stage,
+            allowedStages: ["Draft", "Requested Changes"],
+          });
+        }
+        return res.status(403).json({ message: "Access denied" });
       }
 
       // Find the item
@@ -194,6 +220,8 @@ router.post(
         orderId,
         itemId,
         finalSize: processedBuffer.length,
+        orderStage: order.stage,
+        uploadedBy: req.user.email,
       });
 
       // Emit real-time update
@@ -311,6 +339,7 @@ router.post(
         orderId,
         itemId,
         finalSize: processedBuffer.length,
+        orderStage: order.stage,
       });
 
       // Emit real-time update
@@ -354,7 +383,7 @@ router.post(
   }
 );
 
-// Delete image (unified endpoint for both inspiration and preview)
+// Enhanced delete image - supports baker deleting inspiration images in Draft and Requested Changes stages
 router.post("/delete", requireBakerOrAdmin, async (req, res) => {
   try {
     const { orderId, itemId, imageKey, imageType } = req.body;
@@ -393,20 +422,34 @@ router.post("/delete", requireBakerOrAdmin, async (req, res) => {
       return res.status(404).json({ message: "Item not found" });
     }
 
-    // Check permissions
+    // Enhanced permission checking
     const isAdmin = req.user.role === "admin";
-    const isBakerOwner =
-      req.user.role === "baker" && order.bakerId === req.user.bakerId;
+    const canDeleteInspiration =
+      isAdmin || canBakerManageInspirationImages(order, req.user);
+    const canDeletePreview = isAdmin;
 
-    if (imageType === "preview" && !isAdmin) {
+    if (imageType === "preview" && !canDeletePreview) {
       return res.status(403).json({
         message: "Only admins can delete preview images",
       });
     }
 
-    if (imageType === "inspiration" && !isAdmin && !isBakerOwner) {
+    if (imageType === "inspiration" && !canDeleteInspiration) {
+      if (req.user.role === "baker") {
+        if (order.bakerId !== req.user.bakerId) {
+          return res.status(403).json({
+            message: "Access denied to this order",
+          });
+        }
+        return res.status(403).json({
+          message:
+            "Can only delete inspiration images in Draft or Requested Changes stages",
+          currentStage: order.stage,
+          allowedStages: ["Draft", "Requested Changes"],
+        });
+      }
       return res.status(403).json({
-        message: "Access denied to this order",
+        message: "Access denied",
       });
     }
 
@@ -424,6 +467,8 @@ router.post("/delete", requireBakerOrAdmin, async (req, res) => {
       url: imageToDelete.url,
       key: imageToDelete.key,
       uploadedAt: imageToDelete.uploadedAt,
+      orderStage: order.stage,
+      deletedBy: req.user.email,
     });
 
     // Remove from S3
@@ -503,6 +548,16 @@ router.get("/s3-info", requireBakerOrAdmin, async (req, res) => {
         outputFormat: "JPEG",
         defaultQuality: 85,
         maxWidth: 1920,
+      },
+      permissions: {
+        inspirationImages: {
+          upload: "Baker (Draft/Requested Changes) + Admin (always)",
+          delete: "Baker (Draft/Requested Changes) + Admin (always)",
+        },
+        previewImages: {
+          upload: "Admin only",
+          delete: "Admin only",
+        },
       },
     });
   } catch (error) {
