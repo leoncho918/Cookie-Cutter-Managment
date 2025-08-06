@@ -751,7 +751,7 @@ const OrderDetail = () => {
     return (
       <div className="mt-6 pt-4 border-t border-gray-200">
         <h4 className="text-sm font-medium text-gray-700 mb-3">
-          Completion Details
+          Pickup or Delivery Details
         </h4>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -868,8 +868,8 @@ const OrderDetail = () => {
               }
             >
               {order.deliveryMethod && order.paymentMethod
-                ? "Update Completion Details"
-                : "Set Completion Details"}
+                ? "Update Details"
+                : "Confirm Pickup or Delivery Details"}
             </Button>
           </div>
         )}
@@ -1617,8 +1617,8 @@ const OrderDetail = () => {
         </div>
       </Modal>
 
-      {/* Completion Modal */}
-      <Modal
+      {/* Enhanced Completion Modal - Using Separate Component */}
+      <CompletionModal
         isOpen={completionModal.isOpen}
         onClose={() =>
           setCompletionModal({
@@ -1630,234 +1630,12 @@ const OrderDetail = () => {
             pickupNotes: "",
           })
         }
-        title="Completion Details"
-        size="large"
-      >
-        <div className="space-y-6">
-          {/* Delivery Method */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Delivery Method *
-            </label>
-            <div className="grid grid-cols-2 gap-3">
-              {Object.values(DELIVERY_METHODS).map((method) => (
-                <label
-                  key={method}
-                  className={`
-              relative flex items-center p-4 border rounded-lg cursor-pointer transition-colors
-              ${
-                completionModal.deliveryMethod === method
-                  ? "border-blue-500 bg-blue-50"
-                  : "border-gray-300 hover:bg-gray-50"
-              }
-            `}
-                >
-                  <input
-                    type="radio"
-                    name="deliveryMethod"
-                    value={method}
-                    checked={completionModal.deliveryMethod === method}
-                    onChange={(e) =>
-                      setCompletionModal((prev) => ({
-                        ...prev,
-                        deliveryMethod: e.target.value,
-                      }))
-                    }
-                    className="sr-only"
-                  />
-                  <div className="flex items-center">
-                    <div
-                      className={`
-                  w-4 h-4 rounded-full border-2 mr-3
-                  ${
-                    completionModal.deliveryMethod === method
-                      ? "border-blue-500 bg-blue-500"
-                      : "border-gray-300"
-                  }
-                `}
-                    >
-                      {completionModal.deliveryMethod === method && (
-                        <div className="w-2 h-2 bg-white rounded-full m-0.5"></div>
-                      )}
-                    </div>
-                    <div>
-                      <div className="font-medium text-gray-900">
-                        {method === "Pickup" ? "🚶 Pickup" : "🚚 Delivery"}
-                      </div>
-                      <div className="text-sm text-gray-500">
-                        {method === "Pickup"
-                          ? "I will collect the order"
-                          : "Please deliver the order"}
-                      </div>
-                    </div>
-                  </div>
-                </label>
-              ))}
-            </div>
-          </div>
-
-          {/* Pickup Schedule - Only show if Pickup is selected */}
-          {completionModal.deliveryMethod === "Pickup" && (
-            <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-              <h4 className="text-lg font-medium text-blue-800 mb-4">
-                📅 Schedule Pickup
-              </h4>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-blue-700 mb-1">
-                    Pickup Date *
-                  </label>
-                  <input
-                    type="date"
-                    value={completionModal.pickupDate}
-                    onChange={(e) =>
-                      setCompletionModal((prev) => ({
-                        ...prev,
-                        pickupDate: e.target.value,
-                      }))
-                    }
-                    min={new Date().toISOString().split("T")[0]}
-                    required
-                    className="w-full border border-blue-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-blue-700 mb-1">
-                    Pickup Time *
-                  </label>
-                  <input
-                    type="time"
-                    value={completionModal.pickupTime}
-                    onChange={(e) =>
-                      setCompletionModal((prev) => ({
-                        ...prev,
-                        pickupTime: e.target.value,
-                      }))
-                    }
-                    required
-                    className="w-full border border-blue-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                  />
-                </div>
-              </div>
-
-              <div className="mt-4">
-                <label className="block text-sm font-medium text-blue-700 mb-1">
-                  Pickup Notes (Optional)
-                </label>
-                <textarea
-                  value={completionModal.pickupNotes}
-                  onChange={(e) =>
-                    setCompletionModal((prev) => ({
-                      ...prev,
-                      pickupNotes: e.target.value,
-                    }))
-                  }
-                  placeholder="Any special instructions or notes for pickup..."
-                  rows={3}
-                  maxLength={500}
-                  className="w-full border border-blue-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                />
-                <div className="text-xs text-blue-600 mt-1">
-                  {completionModal.pickupNotes.length}/500 characters
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Payment Method */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Payment Method *
-            </label>
-            <div className="grid grid-cols-2 gap-3">
-              {Object.values(PAYMENT_METHODS).map((method) => (
-                <label
-                  key={method}
-                  className={`
-              relative flex items-center p-4 border rounded-lg cursor-pointer transition-colors
-              ${
-                completionModal.paymentMethod === method
-                  ? "border-green-500 bg-green-50"
-                  : "border-gray-300 hover:bg-gray-50"
-              }
-            `}
-                >
-                  <input
-                    type="radio"
-                    name="paymentMethod"
-                    value={method}
-                    checked={completionModal.paymentMethod === method}
-                    onChange={(e) =>
-                      setCompletionModal((prev) => ({
-                        ...prev,
-                        paymentMethod: e.target.value,
-                      }))
-                    }
-                    className="sr-only"
-                  />
-                  <div className="flex items-center">
-                    <div
-                      className={`
-                  w-4 h-4 rounded-full border-2 mr-3
-                  ${
-                    completionModal.paymentMethod === method
-                      ? "border-green-500 bg-green-500"
-                      : "border-gray-300"
-                  }
-                `}
-                    >
-                      {completionModal.paymentMethod === method && (
-                        <div className="w-2 h-2 bg-white rounded-full m-0.5"></div>
-                      )}
-                    </div>
-                    <div>
-                      <div className="font-medium text-gray-900">
-                        {method === "Cash" ? "💵 Cash" : "💳 Card"}
-                      </div>
-                      <div className="text-sm text-gray-500">
-                        {method === "Cash" ? "Pay with cash" : "Pay with card"}
-                      </div>
-                    </div>
-                  </div>
-                </label>
-              ))}
-            </div>
-          </div>
-
-          <div className="flex space-x-3 justify-end pt-4 border-t border-gray-200">
-            <Button
-              variant="outline"
-              onClick={() =>
-                setCompletionModal({
-                  isOpen: false,
-                  deliveryMethod: "",
-                  paymentMethod: "",
-                  pickupDate: "",
-                  pickupTime: "",
-                  pickupNotes: "",
-                })
-              }
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              onClick={handleCompletionUpdate}
-              loading={actionLoading}
-              disabled={
-                !completionModal.deliveryMethod ||
-                !completionModal.paymentMethod ||
-                (completionModal.deliveryMethod === "Pickup" &&
-                  (!completionModal.pickupDate || !completionModal.pickupTime))
-              }
-            >
-              {actionLoading ? "Updating..." : "Confirm Details"}
-            </Button>
-          </div>
-        </div>
-      </Modal>
+        onSubmit={handleCompletionUpdate}
+        loading={actionLoading}
+        completionData={completionModal}
+        setCompletionData={setCompletionModal}
+        order={order}
+      />
 
       {/* Add Item Modal */}
       <Modal
@@ -2044,8 +1822,6 @@ const OrderDetail = () => {
           </Button>
         </div>
       </Modal>
-
-      {/* Enhanced Completion Modal */}
 
       {/* Pickup Details Modal */}
       <Modal
