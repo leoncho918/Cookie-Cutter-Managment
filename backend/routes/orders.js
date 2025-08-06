@@ -1,4 +1,4 @@
-// routes/orders.js - Complete orders routes with Socket.IO real-time updates
+// routes/orders.js - Enhanced orders routes with baker email filtering
 const express = require("express");
 const Order = require("../models/Order");
 const { requireAdmin, requireBakerOrAdmin } = require("../middleware/auth");
@@ -7,7 +7,7 @@ const { emitOrderUpdate } = require("../utils/socketUtils");
 
 const router = express.Router();
 
-// Get all orders (with filtering)
+// Get all orders (with enhanced filtering including baker email)
 router.get("/", requireBakerOrAdmin, async (req, res) => {
   try {
     let query = {};
@@ -18,10 +18,15 @@ router.get("/", requireBakerOrAdmin, async (req, res) => {
     }
 
     // Apply filters from query parameters
-    const { stage, bakerId, dateFrom, dateTo } = req.query;
+    const { stage, bakerId, bakerEmail, dateFrom, dateTo } = req.query;
 
     if (stage) query.stage = stage;
     if (bakerId && req.user.role === "admin") query.bakerId = bakerId;
+
+    // NEW: Baker email filtering (admin only)
+    if (bakerEmail && req.user.role === "admin") {
+      query.bakerEmail = { $regex: new RegExp(bakerEmail, "i") }; // Case-insensitive search
+    }
 
     if (dateFrom || dateTo) {
       query.dateRequired = {};
@@ -29,9 +34,21 @@ router.get("/", requireBakerOrAdmin, async (req, res) => {
       if (dateTo) query.dateRequired.$lte = new Date(dateTo);
     }
 
+    console.log("📋 Orders query with filters:", {
+      query,
+      userRole: req.user.role,
+      userId: req.user._id,
+      filters: { stage, bakerId, bakerEmail, dateFrom, dateTo },
+    });
+
     const orders = await Order.find(query)
       .sort({ createdAt: -1 })
       .populate("stageHistory.changedBy", "email bakerId");
+
+    console.log("✅ Orders found:", {
+      count: orders.length,
+      filterApplied: Object.keys(req.query).length > 0,
+    });
 
     res.json(orders);
   } catch (error) {
@@ -826,6 +843,7 @@ router.put("/:id/completion", async (req, res) => {
 // Get order statistics (Admin only)
 router.get("/stats/overview", requireAdmin, async (req, res) => {
   try {
+    // Enhanced statistics with baker email filtering support
     const stats = await Order.aggregate([
       {
         $group: {
@@ -841,6 +859,24 @@ router.get("/stats/overview", requireAdmin, async (req, res) => {
       stage: { $nin: ["Completed", "Draft"] },
     });
 
+    // Additional stats for baker activity
+    const bakerStats = await Order.aggregate([
+      {
+        $group: {
+          _id: "$bakerEmail",
+          orderCount: { $sum: 1 },
+          bakerId: { $first: "$bakerId" },
+          lastOrderDate: { $max: "$createdAt" },
+        },
+      },
+      {
+        $sort: { orderCount: -1 },
+      },
+      {
+        $limit: 10, // Top 10 most active bakers
+      },
+    ]);
+
     res.json({
       totalOrders,
       completedOrders,
@@ -849,6 +885,7 @@ router.get("/stats/overview", requireAdmin, async (req, res) => {
         acc[stat._id] = stat.count;
         return acc;
       }, {}),
+      topBakers: bakerStats,
     });
   } catch (error) {
     console.error("Error fetching order statistics:", error);
