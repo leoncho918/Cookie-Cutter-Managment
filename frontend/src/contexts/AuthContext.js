@@ -1,4 +1,4 @@
-// src/contexts/AuthContext.js - Authentication context provider
+// frontend/src/contexts/AuthContext.js - FIXED Authentication context
 import React, { createContext, useContext, useState, useEffect } from "react";
 import axios from "axios";
 
@@ -22,26 +22,8 @@ export const AuthProvider = ({ children }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [token, setToken] = useState(localStorage.getItem("token"));
 
-  // Add axios interceptor to handle first login enforcement
-  useEffect(() => {
-    const interceptor = axios.interceptors.response.use(
-      (response) => response,
-      (error) => {
-        if (
-          error.response?.status === 403 &&
-          error.response?.data?.requiresPasswordChange
-        ) {
-          // Force redirect to password change
-          window.location.href = "/first-login";
-        }
-        return Promise.reject(error);
-      }
-    );
-
-    return () => {
-      axios.interceptors.response.eject(interceptor);
-    };
-  }, []);
+  // REMOVED: The problematic interceptor that was causing redirect loops
+  // We'll handle first login enforcement in the App.js routing instead
 
   // Set auth token in axios headers
   useEffect(() => {
@@ -52,25 +34,32 @@ export const AuthProvider = ({ children }) => {
     }
   }, [token]);
 
-  // Check for existing token on app load
+  // FIXED: Check for existing token on app load
   useEffect(() => {
     const checkAuth = async () => {
       const storedToken = localStorage.getItem("token");
 
       if (storedToken) {
         try {
-          // Verify token with server by fetching user profile
+          // Set token first
           axios.defaults.headers.common[
             "Authorization"
           ] = `Bearer ${storedToken}`;
+
+          // Try to fetch user profile
           const response = await axios.get("/users/profile");
 
+          console.log("✅ Token verified, user data:", response.data);
           setUser(response.data);
           setToken(storedToken);
         } catch (error) {
-          console.error("Token verification failed:", error);
+          console.error("❌ Token verification failed:", error);
+
+          // Clear invalid token
           localStorage.removeItem("token");
           delete axios.defaults.headers.common["Authorization"];
+          setToken(null);
+          setUser(null);
         }
       }
 
@@ -80,9 +69,11 @@ export const AuthProvider = ({ children }) => {
     checkAuth();
   }, []);
 
-  // Login function - Updated to handle first login enforcement
+  // FIXED: Login function with better error handling
   const login = async (email, password) => {
     try {
+      console.log("🔐 Attempting login for:", email);
+
       const response = await axios.post("/auth/login", { email, password });
       const {
         token: newToken,
@@ -90,6 +81,14 @@ export const AuthProvider = ({ children }) => {
         requiresPasswordChange,
       } = response.data;
 
+      console.log("✅ Login successful:", {
+        email: userData.email,
+        role: userData.role,
+        isFirstLogin: userData.isFirstLogin,
+        requiresPasswordChange,
+      });
+
+      // Store token and set user data
       localStorage.setItem("token", newToken);
       setToken(newToken);
       setUser(userData);
@@ -97,10 +96,10 @@ export const AuthProvider = ({ children }) => {
       return {
         success: true,
         user: userData,
-        requiresPasswordChange, // ← Pass this to the frontend
+        requiresPasswordChange: userData.isFirstLogin || requiresPasswordChange,
       };
     } catch (error) {
-      console.error("Login error:", error);
+      console.error("❌ Login error:", error);
       return {
         success: false,
         message: error.response?.data?.message || "Login failed",
@@ -110,29 +109,33 @@ export const AuthProvider = ({ children }) => {
 
   // Logout function
   const logout = () => {
+    console.log("🚪 Logging out user");
     localStorage.removeItem("token");
     setToken(null);
     setUser(null);
     delete axios.defaults.headers.common["Authorization"];
   };
 
-  // Change password function
+  // FIXED: Change password function with better state management
   const changePassword = async (currentPassword, newPassword) => {
     try {
+      console.log("🔒 Changing password for user:", user?.email);
+
       await axios.post("/auth/change-password", {
         currentPassword,
         newPassword,
       });
 
-      // Update user's first login status
+      // IMPORTANT: Update user's first login status immediately
       setUser((prevUser) => ({
         ...prevUser,
         isFirstLogin: false,
       }));
 
+      console.log("✅ Password changed successfully");
       return { success: true };
     } catch (error) {
-      console.error("Change password error:", error);
+      console.error("❌ Change password error:", error);
       return {
         success: false,
         message: error.response?.data?.message || "Password change failed",
@@ -154,22 +157,7 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Check if user needs to change password (for existing sessions)
-  const checkPasswordChangeRequired = async () => {
-    try {
-      // Make a request to any protected endpoint to check status
-      await axios.get("/users/profile");
-      return false; // If successful, no password change required
-    } catch (error) {
-      if (
-        error.response?.status === 403 &&
-        error.response?.data?.requiresPasswordChange
-      ) {
-        return true; // Password change required
-      }
-      return false;
-    }
-  };
+  // REMOVED: checkPasswordChangeRequired function as it's not needed with the new approach
 
   const value = {
     user,
@@ -179,7 +167,6 @@ export const AuthProvider = ({ children }) => {
     logout,
     changePassword,
     resetPassword,
-    checkPasswordChangeRequired,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

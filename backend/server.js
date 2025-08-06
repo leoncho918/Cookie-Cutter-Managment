@@ -1,4 +1,4 @@
-// server.js - Fixed Express server with proper Socket.IO integration
+// backend/server.js - FIXED routes configuration to properly handle first login
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
@@ -33,7 +33,7 @@ const io = socketIo(server, {
     allowedHeaders: ["my-custom-header"],
   },
   transports: ["websocket", "polling"],
-  allowEIO3: true, // Allow Engine.IO v3 clients
+  allowEIO3: true,
   pingTimeout: 60000,
   pingInterval: 25000,
 });
@@ -95,7 +95,7 @@ io.on("connection", (socket) => {
   });
 
   // Join user to their role-based room
-  const userRoom = `${socket.user.role}s`; // 'bakers' or 'admins'
+  const userRoom = `${socket.user.role}s`;
   socket.join(userRoom);
   console.log(`👥 User joined role room: ${userRoom}`);
 
@@ -108,8 +108,8 @@ io.on("connection", (socket) => {
   // Join admin to all rooms for monitoring
   if (socket.user.role === "admin") {
     socket.join("admins");
-    socket.join("bakers"); // Admins can see baker activities
-    socket.join("all-orders"); // Admins see all order activities
+    socket.join("bakers");
+    socket.join("all-orders");
     console.log("👑 Admin joined monitoring rooms: admins, bakers, all-orders");
   }
 
@@ -139,10 +139,7 @@ io.on("connection", (socket) => {
       socketId: socket.id,
     });
 
-    // Remove from connected users
     connectedUsers.delete(socket.id);
-
-    // Broadcast updated user count
     const updatedCounts = getUserCounts();
     io.emit("user-count-update", updatedCounts);
   });
@@ -160,8 +157,6 @@ io.on("connection", (socket) => {
       console.log(
         `📋 User ${socket.user.email} joined order room: order-${orderId}`
       );
-
-      // Confirm room join
       socket.emit("room-joined", {
         room: `order-${orderId}`,
         orderId,
@@ -176,8 +171,6 @@ io.on("connection", (socket) => {
       console.log(
         `📋 User ${socket.user.email} left order room: order-${orderId}`
       );
-
-      // Confirm room leave
       socket.emit("room-left", {
         room: `order-${orderId}`,
         orderId,
@@ -218,12 +211,28 @@ function getUserCounts() {
   };
 }
 
-// Routes
-app.use("/api/users", authenticateToken, requirePasswordChange, userRoutes);
+// FIXED Routes configuration
+// Auth routes (no password change middleware needed)
+app.use("/api/auth", authRoutes);
+
+// IMPORTANT: Configure user routes with selective password change middleware
+app.use(
+  "/api/users",
+  authenticateToken,
+  (req, res, next) => {
+    // Allow profile endpoint during first login
+    if (req.path === "/profile" && req.method === "GET") {
+      return next();
+    }
+    // Apply password change middleware to other endpoints
+    requirePasswordChange(req, res, next);
+  },
+  userRoutes
+);
+
+// Other protected routes with password change middleware
 app.use("/api/orders", authenticateToken, requirePasswordChange, orderRoutes);
 app.use("/api/upload", authenticateToken, requirePasswordChange, uploadRoutes);
-
-app.use("/api/auth", authRoutes);
 
 // Health check
 app.get("/api/health", (req, res) => {
@@ -244,7 +253,7 @@ app.get("/api/socket-status", authenticateToken, (req, res) => {
   res.json({
     connectedUsers: connectedUsers.size,
     userBreakdown: userCounts,
-    rooms: rooms.filter((room) => !room.startsWith("/")), // Filter out socket IDs
+    rooms: rooms.filter((room) => !room.startsWith("/")),
     timestamp: new Date().toISOString(),
     connectedUsersList:
       req.user.role === "admin" ? Array.from(connectedUsers.values()) : null,
@@ -253,7 +262,6 @@ app.get("/api/socket-status", authenticateToken, (req, res) => {
 
 // Test Socket.IO endpoint
 app.get("/api/test-socket", authenticateToken, (req, res) => {
-  // Send a test notification to the user
   const testMessage = {
     message: `Test notification for ${req.user.email}`,
     type: "info",
@@ -305,7 +313,6 @@ const gracefulShutdown = () => {
     });
   });
 
-  // Force close after 10 seconds
   setTimeout(() => {
     console.error(
       "🚨 Could not close connections in time, forcefully shutting down"
@@ -317,7 +324,6 @@ const gracefulShutdown = () => {
 process.on("SIGTERM", gracefulShutdown);
 process.on("SIGINT", gracefulShutdown);
 
-// Handle uncaught exceptions
 process.on("uncaughtException", (err) => {
   console.error("🚨 Uncaught Exception:", err);
   gracefulShutdown();

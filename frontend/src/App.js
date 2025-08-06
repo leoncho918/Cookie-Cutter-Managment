@@ -1,4 +1,4 @@
-// src/App.js - Complete React application with Socket.IO integration
+// frontend/src/App.js - FIXED App component with proper first login handling
 import React, { useState, useEffect } from "react";
 import {
   BrowserRouter as Router,
@@ -22,25 +22,38 @@ import LoadingSpinner from "./components/UI/LoadingSpinner";
 import Toast from "./components/UI/Toast";
 import "./App.css";
 
-// Protected Route Component
+// FIXED: Protected Route Component with proper first login enforcement
 const ProtectedRoute = ({ children, adminOnly = false }) => {
   const { user, isLoading } = useAuth();
 
   if (isLoading) {
-    return <LoadingSpinner />;
+    return (
+      <div className="flex justify-center items-center h-screen">
+        <LoadingSpinner size="large" />
+      </div>
+    );
   }
 
   if (!user) {
-    return <Navigate to="/login" />;
+    return <Navigate to="/login" replace />;
   }
 
-  // ENFORCE first login password change
+  // CRITICAL: Check for first login requirement
+  console.log("🔍 ProtectedRoute check:", {
+    email: user.email,
+    isFirstLogin: user.isFirstLogin,
+    currentPath: window.location.pathname,
+  });
+
   if (user.isFirstLogin) {
-    return <Navigate to="/first-login" />;
+    console.log(
+      "🚨 User needs to change password - redirecting to first-login"
+    );
+    return <Navigate to="/first-login" replace />;
   }
 
   if (adminOnly && user.role !== "admin") {
-    return <Navigate to="/dashboard" />;
+    return <Navigate to="/dashboard" replace />;
   }
 
   return children;
@@ -63,16 +76,33 @@ const AppLayout = ({ children }) => {
   );
 };
 
-// First Login Handler Component
+// FIXED: First Login Handler Component
 const FirstLoginHandler = () => {
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
 
-  // Always redirect to change password if it's first login
-  if (user?.isFirstLogin) {
-    return <ChangePassword isFirstLogin={true} />;
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center h-screen">
+        <LoadingSpinner size="large" />
+      </div>
+    );
   }
 
-  return <Navigate to="/dashboard" />;
+  if (!user) {
+    console.log("🚨 No user found in FirstLoginHandler - redirecting to login");
+    return <Navigate to="/login" replace />;
+  }
+
+  // If user is NOT on first login, redirect to dashboard
+  if (!user.isFirstLogin) {
+    console.log(
+      "✅ User has already changed password - redirecting to dashboard"
+    );
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  console.log("🔒 Showing password change form for first login");
+  return <ChangePassword isFirstLogin={true} />;
 };
 
 // Main App Component
@@ -92,12 +122,16 @@ function App() {
   );
 }
 
-// App Content Component (separated to use hooks)
+// FIXED: App Content Component with better routing logic
 const AppContent = () => {
   const { user, isLoading } = useAuth();
 
   if (isLoading) {
-    return <LoadingSpinner />;
+    return (
+      <div className="flex justify-center items-center h-screen">
+        <LoadingSpinner size="large" />
+      </div>
+    );
   }
 
   return (
@@ -106,18 +140,21 @@ const AppContent = () => {
         {/* Public Routes */}
         <Route
           path="/login"
-          element={user ? <Navigate to="/dashboard" /> : <Login />}
-        />
-
-        {/* First Login Route */}
-        <Route
-          path="/first-login"
           element={
-            <ProtectedRoute>
-              <FirstLoginHandler />
-            </ProtectedRoute>
+            user ? (
+              user.isFirstLogin ? (
+                <Navigate to="/first-login" replace />
+              ) : (
+                <Navigate to="/dashboard" replace />
+              )
+            ) : (
+              <Login />
+            )
           }
         />
+
+        {/* First Login Route - CRITICAL for password changes */}
+        <Route path="/first-login" element={<FirstLoginHandler />} />
 
         {/* Protected Routes */}
         <Route
@@ -188,7 +225,20 @@ const AppContent = () => {
         />
 
         {/* Default Route */}
-        <Route path="/" element={<Navigate to="/dashboard" />} />
+        <Route
+          path="/"
+          element={
+            user ? (
+              user.isFirstLogin ? (
+                <Navigate to="/first-login" replace />
+              ) : (
+                <Navigate to="/dashboard" replace />
+              )
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
 
         {/* 404 Route */}
         <Route

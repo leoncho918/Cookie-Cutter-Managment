@@ -1,4 +1,4 @@
-// middleware/auth.js - Authentication middleware
+// backend/middleware/auth.js - FIXED Authentication middleware
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 
@@ -47,12 +47,31 @@ const requireBakerOrAdmin = (req, res, next) => {
   next();
 };
 
-// Check if user needs to change password on first login
+// FIXED: Check if user needs to change password on first login
+// Only block certain endpoints, NOT profile fetching or password change
 const requirePasswordChange = async (req, res, next) => {
   try {
     const user = await User.findById(req.user._id).select("-password");
 
     if (user && user.isFirstLogin) {
+      // IMPORTANT: Allow these endpoints even during first login
+      const allowedEndpoints = [
+        "/users/profile",
+        "/auth/change-password",
+        "/auth/logout", // if you have this endpoint
+      ];
+
+      // Check if current endpoint is allowed
+      const isAllowedEndpoint = allowedEndpoints.some((endpoint) =>
+        req.path.includes(endpoint)
+      );
+
+      if (isAllowedEndpoint) {
+        // Allow the request to proceed
+        return next();
+      }
+
+      // Block all other endpoints
       return res.status(403).json({
         message: "Password change required",
         requiresPasswordChange: true,

@@ -51,9 +51,9 @@ const sendAccountCreationEmail = async (
         <li><strong>Temporary Password:</strong> ${temporaryPassword}</li>
       </ul>
       <p><strong>Important:</strong> You will be required to change your password on first login.</p>
-      <p>Please log in to the system and start managing your orders!</p>
+      <p>Please log in to the system and start creating orders!</p>
       <br>
-      <p>Best regards,<br>Cookie Cutter Order Management Team</p>
+      <p>Best regards,<br>Leon</p>
     `,
   };
 
