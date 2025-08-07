@@ -101,6 +101,10 @@ const OrderDetail = () => {
       deliveryAddress: null,
     },
   });
+  // NEW: Confirmation modal state
+  const [confirmationModal, setConfirmationModal] = useState({
+    isOpen: false,
+  });
 
   useEffect(() => {
     if (id) {
@@ -467,7 +471,7 @@ const OrderDetail = () => {
         };
       }
 
-      await axios.put(`/orders/${id}/completion`, payload);
+      const response = await axios.put(`/orders/${id}/completion`, payload);
 
       showSuccess("Completion details updated successfully");
       loadOrder();
@@ -487,10 +491,41 @@ const OrderDetail = () => {
           instructions: "",
         },
       });
+
+      // NEW: Show confirmation modal if baker needs to confirm
+      if (response.data.requiresConfirmation) {
+        setConfirmationModal({
+          isOpen: true,
+        });
+      }
     } catch (error) {
       console.error("Error updating completion details:", error);
       showError(
         error.response?.data?.message || "Failed to update completion details"
+      );
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // NEW: Handle details confirmation
+  const handleDetailsConfirmation = async () => {
+    try {
+      setActionLoading(true);
+
+      await axios.put(`/orders/${id}/completion/confirm`);
+
+      showSuccess("Collection and payment details confirmed successfully!");
+      showInfo("Details are now locked. Contact admin if changes are needed.");
+      loadOrder();
+
+      setConfirmationModal({
+        isOpen: false,
+      });
+    } catch (error) {
+      console.error("Error confirming completion details:", error);
+      showError(
+        error.response?.data?.message || "Failed to confirm completion details"
       );
     } finally {
       setActionLoading(false);
@@ -835,6 +870,13 @@ const OrderDetail = () => {
     });
   };
 
+  // NEW: Handle opening confirmation modal
+  const handleOpenConfirmationModal = () => {
+    setConfirmationModal({
+      isOpen: true,
+    });
+  };
+
   const renderCompletionDetails = () => {
     if (order.stage !== ORDER_STAGES.COMPLETED) return null;
 
@@ -850,6 +892,12 @@ const OrderDetail = () => {
           {isInternationalDelivery && (
             <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
               🌍 International
+            </span>
+          )}
+          {/* NEW: Confirmation status indicator */}
+          {order.detailsConfirmed && (
+            <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
+              ✅ Confirmed
             </span>
           )}
         </h4>
@@ -1069,30 +1117,56 @@ const OrderDetail = () => {
                     </div>
                   </div>
                 </div>
-              ) : order.updateRequest?.status === "approved" ? (
-                <Button
-                  variant="primary"
-                  size="small"
-                  onClick={handleOpenCompletionModal}
-                >
-                  Update Collection & Payment Details
-                </Button>
-              ) : !order.deliveryMethod || !order.paymentMethod ? (
-                <Button
-                  variant="primary"
-                  size="small"
-                  onClick={handleOpenCompletionModal}
-                >
-                  Set Collection & Payment Details
-                </Button>
               ) : (
-                <Button
-                  variant="secondary"
-                  size="small"
-                  onClick={handleOpenUpdateRequestModal}
-                >
-                  Request Collection & Payment Update
-                </Button>
+                // NEW: Enhanced button logic with confirmation workflow
+                <div className="flex space-x-3">
+                  {!order.deliveryMethod || !order.paymentMethod ? (
+                    <Button
+                      variant="primary"
+                      size="small"
+                      onClick={handleOpenCompletionModal}
+                    >
+                      Set Collection & Payment Details
+                    </Button>
+                  ) : !order.detailsConfirmed ? (
+                    <>
+                      <Button
+                        variant="primary"
+                        size="small"
+                        onClick={handleOpenConfirmationModal}
+                      >
+                        Confirm Details
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="small"
+                        onClick={handleOpenCompletionModal}
+                      >
+                        Edit Details
+                      </Button>
+                    </>
+                  ) : order.updateRequest?.status === "approved" ? (
+                    <Button
+                      variant="primary"
+                      size="small"
+                      onClick={handleOpenCompletionModal}
+                    >
+                      Update Collection & Payment Details
+                    </Button>
+                  ) : order.updateRequest?.status === "pending" ? (
+                    <Button variant="outline" size="small" disabled>
+                      Update Request Pending
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="secondary"
+                      size="small"
+                      onClick={handleOpenUpdateRequestModal}
+                    >
+                      Request to Update Details
+                    </Button>
+                  )}
+                </div>
               )}
             </div>
           )}
@@ -1902,6 +1976,25 @@ const OrderDetail = () => {
         completionData={completionModal}
         setCompletionData={setCompletionModal}
         order={order}
+      />
+
+      {/* NEW: Confirmation Modal */}
+      <CompletionModal
+        isOpen={confirmationModal.isOpen}
+        onClose={() => setConfirmationModal({ isOpen: false })}
+        onConfirm={handleDetailsConfirmation}
+        loading={actionLoading}
+        completionData={{
+          deliveryMethod: order?.deliveryMethod,
+          paymentMethod: order?.paymentMethod,
+          pickupDate: order?.pickupSchedule?.date,
+          pickupTime: order?.pickupSchedule?.time,
+          pickupNotes: order?.pickupSchedule?.notes,
+          deliveryAddress: order?.deliveryAddress,
+        }}
+        setCompletionData={() => {}} // Read-only in confirmation step
+        order={order}
+        isConfirmationStep={true}
       />
 
       {/* Update Request Modal */}

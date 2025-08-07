@@ -936,20 +936,31 @@ router.put("/:id/completion", async (req, res) => {
     }
 
     if (req.user.role === "baker") {
-      // Check if baker has permission to update
-      if (order.updateRequest && order.updateRequest.status === "approved") {
+      // NEW: Check if details are already confirmed
+      if (order.detailsConfirmed) {
+        // If details are confirmed, baker needs admin approval to update
+        if (order.updateRequest && order.updateRequest.status === "approved") {
+          console.log("Baker updating with approved request");
+        } else {
+          return res.status(403).json({
+            message:
+              "Details are already confirmed. Please request changes through admin.",
+            requiresRequest: true,
+            detailsConfirmed: true,
+          });
+        }
+      } else if (
+        order.updateRequest &&
+        order.updateRequest.status === "approved"
+      ) {
         // Baker can update because admin approved their request
         console.log("Baker updating with approved request");
       } else if (!order.deliveryMethod && !order.paymentMethod) {
         // First time setting details - allow direct update
         console.log("Baker setting initial completion details");
       } else {
-        // Baker trying to update existing details without approval
-        return res.status(403).json({
-          message:
-            "Cannot update existing details. Please request changes through admin.",
-          requiresRequest: true,
-        });
+        // Baker trying to update existing unconfirmed details - this is allowed
+        console.log("Baker updating unconfirmed completion details");
       }
     }
 
@@ -1134,6 +1145,21 @@ router.put("/:id/completion", async (req, res) => {
 
     await order.save();
 
+    // NEW: Reset confirmation if admin is updating or if update request was approved
+    if (
+      req.user.role === "admin" ||
+      (order.updateRequest && order.updateRequest.status === "approved")
+    ) {
+      order.detailsConfirmed = false;
+      order.detailsConfirmedAt = undefined;
+      order.detailsConfirmedBy = undefined;
+
+      // Clear the approved update request
+      if (order.updateRequest && order.updateRequest.status === "approved") {
+        order.updateRequest = undefined;
+      }
+    }
+
     console.log("📋 Order completion details updated:", {
       orderId: order._id,
       orderNumber: order.orderNumber,
@@ -1169,12 +1195,118 @@ router.put("/:id/completion", async (req, res) => {
     res.json({
       message: "Completion details updated successfully",
       order,
+      requiresConfirmation:
+        !order.detailsConfirmed && req.user.role === "baker",
     });
   } catch (error) {
     console.error("Error updating completion details:", error);
     res
       .status(500)
       .json({ message: "Server error updating completion details" });
+  }
+});
+
+// NEW: Confirm completion details (baker only)
+router.put("/:id/completion/confirm", async (req, res) => {
+  try {
+    if (req.user.role !== "baker") {
+      return res.status(403).json({
+        message: "Only bakers can confirm completion details",
+      });
+    }
+
+    const order = await Order.findById(req.params.id);
+
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    if (order.bakerId !== req.user.bakerId) {
+      return res.status(403).json({ message: "Access denied to this order" });
+    }
+
+    if (order.stage !== "Completed") {
+      return res.status(400).json({
+        message: "Can only confirm details for completed orders",
+      });
+    }
+
+    if (order.detailsConfirmed) {
+      return res.status(400).json({
+        message: "Completion details are already confirmed",
+      });
+    }
+
+    // Validate that all required details are present
+    if (!order.deliveryMethod || !order.paymentMethod) {
+      return res.status(400).json({
+        message:
+          "Collection and payment details must be set before confirmation",
+      });
+    }
+
+    // Additional validation based on delivery method
+    if (order.deliveryMethod === "Pickup" && !order.pickupSchedule) {
+      return res.status(400).json({
+        message: "Pickup schedule must be set before confirmation",
+      });
+    }
+
+    if (order.deliveryMethod === "Delivery" && !order.deliveryAddress) {
+      return res.status(400).json({
+        message: "Delivery address must be set before confirmation",
+      });
+    }
+
+    // Confirm the details
+    order.detailsConfirmed = true;
+    order.detailsConfirmedAt = new Date();
+    order.detailsConfirmedBy = req.user._id;
+
+    await order.save();
+
+    console.log("✅ Order completion details confirmed:", {
+      orderId: order._id,
+      orderNumber: order.orderNumber,
+      confirmedBy: req.user.email,
+      confirmedAt: order.detailsConfirmedAt,
+      deliveryMethod: order.deliveryMethod,
+      paymentMethod: order.paymentMethod,
+    });
+
+    // Send confirmation email
+    const { sendCompletionDetailsConfirmedEmail } = require("../utils/email");
+    await sendCompletionDetailsConfirmedEmail(
+      order.bakerEmail,
+      order.orderNumber,
+      order.deliveryMethod,
+      order.paymentMethod,
+      order.pickupSchedule,
+      order.deliveryAddress
+    );
+
+    // Emit real-time update
+    const io = req.app.get("io");
+    if (io) {
+      emitOrderUpdate(
+        io,
+        order._id,
+        order,
+        "completion_confirmed",
+        req.user._id,
+        req.user.email
+      );
+    }
+
+    res.json({
+      message: "Completion details confirmed successfully",
+      order,
+    });
+  } catch (error) {
+    console.error("Error confirming completion details:", error);
+    res
+      .status(500)
+      .json({ message: "Server error confirming completion details" });
   }
 });
 
@@ -1234,6 +1366,13 @@ router.get("/stats/overview", requireAdmin, async (req, res) => {
 // Request completion details update (Baker only)
 router.post("/:id/request-completion-update", async (req, res) => {
   try {
+    if (!order.detailsConfirmed) {
+      return res.status(400).json({
+        message: "Please confirm your details first before requesting updates",
+        requiresConfirmation: true,
+      });
+    }
+
     if (req.user.role !== "baker") {
       return res
         .status(403)
@@ -1331,6 +1470,12 @@ router.put("/:id/update-request/:action", requireAdmin, async (req, res) => {
     order.updateRequest.adminResponse = adminResponse || "";
     order.updateRequest.respondedBy = req.user._id;
     order.updateRequest.respondedAt = new Date();
+
+    if (action === "approve") {
+      order.detailsConfirmed = false;
+      order.detailsConfirmedAt = undefined;
+      order.detailsConfirmedBy = undefined;
+    }
 
     await order.save();
 

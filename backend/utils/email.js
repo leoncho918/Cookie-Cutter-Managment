@@ -237,11 +237,88 @@ const sendUpdateRequestResponseEmail = async (
   }
 };
 
+// NEW: Send completion details confirmation email
+const sendCompletionDetailsConfirmedEmail = async (
+  bakerEmail,
+  orderNumber,
+  deliveryMethod,
+  paymentMethod,
+  pickupSchedule,
+  deliveryAddress
+) => {
+  const transporter = createTransporter();
+
+  // Format delivery details for email
+  let deliveryDetails = "";
+  if (deliveryMethod === "Pickup" && pickupSchedule) {
+    deliveryDetails = `
+      <p><strong>Pickup Details:</strong></p>
+      <ul>
+        <li>Date: ${new Date(pickupSchedule.date).toLocaleDateString(
+          "en-AU"
+        )}</li>
+        <li>Time: ${pickupSchedule.time}</li>
+        ${pickupSchedule.notes ? `<li>Notes: ${pickupSchedule.notes}</li>` : ""}
+      </ul>
+    `;
+  } else if (deliveryMethod === "Delivery" && deliveryAddress) {
+    deliveryDetails = `
+      <p><strong>Delivery Address:</strong></p>
+      <ul>
+        <li>${deliveryAddress.street}</li>
+        <li>${deliveryAddress.suburb} ${deliveryAddress.state} ${
+      deliveryAddress.postcode
+    }</li>
+        <li>${deliveryAddress.country}</li>
+        ${
+          deliveryAddress.instructions
+            ? `<li>Instructions: ${deliveryAddress.instructions}</li>`
+            : ""
+        }
+      </ul>
+    `;
+  }
+
+  const mailOptions = {
+    from: process.env.EMAIL_USER,
+    to: bakerEmail,
+    subject: `Collection & Payment Details Confirmed - ${orderNumber}`,
+    html: `
+      <h2>Collection & Payment Details Confirmed</h2>
+      <p><strong>Order Number:</strong> ${orderNumber}</p>
+      <p>Your collection and payment details have been confirmed and are now locked.</p>
+      
+      <h3>Confirmed Details:</h3>
+      <p><strong>Collection Method:</strong> ${deliveryMethod}</p>
+      <p><strong>Payment Method:</strong> ${paymentMethod}</p>
+      ${deliveryDetails}
+      
+      <div style="background-color: #f3f4f6; padding: 15px; border-radius: 8px; margin: 20px 0;">
+        <p><strong>Important:</strong> These details are now confirmed and locked. If you need to make any changes, please contact the admin to request an update.</p>
+      </div>
+      
+      <p>Thank you for confirming your details. We'll be in touch regarding your order.</p>
+      <br>
+      <p>Best regards,<br>Leon</p>
+    `,
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    console.log("Completion details confirmed email sent to:", bakerEmail);
+    return true;
+  } catch (error) {
+    console.error("Error sending completion details confirmed email:", error);
+    return false;
+  }
+};
+
 module.exports = {
   generateRandomPassword,
   sendAccountCreationEmail,
   sendPasswordResetEmail,
   sendOrderStageChangeEmail,
+  sendCompletionDetailsConfirmedEmail,
   sendUpdateRequestNotification,
   sendUpdateRequestResponseEmail,
 };

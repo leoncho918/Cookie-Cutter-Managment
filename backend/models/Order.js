@@ -93,6 +93,18 @@ const orderSchema = new mongoose.Schema({
     type: String,
     enum: ["Cash", "Card"],
   },
+  // NEW: Confirmation tracking for collection and payment details
+  detailsConfirmed: {
+    type: Boolean,
+    default: false,
+  },
+  detailsConfirmedAt: {
+    type: Date,
+  },
+  detailsConfirmedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+  },
   // Add after the existing completion-related fields
   updateRequest: {
     requestedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
