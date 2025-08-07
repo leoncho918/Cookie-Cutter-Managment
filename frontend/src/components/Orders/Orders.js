@@ -94,6 +94,33 @@ const Orders = () => {
       loadOrders();
     });
 
+    const validatePickupSchedule = (pickupSchedule) => {
+      if (!pickupSchedule)
+        return { valid: false, reason: "No pickup schedule" };
+
+      if (!pickupSchedule.date || !pickupSchedule.time) {
+        return { valid: false, reason: "Missing date or time" };
+      }
+
+      try {
+        const pickupDate = new Date(pickupSchedule.date);
+        if (isNaN(pickupDate.getTime())) {
+          return { valid: false, reason: "Invalid date format" };
+        }
+
+        const pickupDateTime = new Date(
+          `${pickupSchedule.date}T${pickupSchedule.time}`
+        );
+        if (isNaN(pickupDateTime.getTime())) {
+          return { valid: false, reason: "Invalid time format" };
+        }
+
+        return { valid: true };
+      } catch (error) {
+        return { valid: false, reason: error.message };
+      }
+    };
+
     // Listen for specific order list events
     const handleOrderListUpdate = (data) => {
       console.log("📋 Order list update received:", data);
@@ -240,12 +267,13 @@ const Orders = () => {
         );
 
       case "pickup-today":
+        const todayForCheck = new Date().toISOString().split("T")[0];
         return (
           filters.stage === "Completed" &&
           filters.deliveryMethod === "Pickup" &&
           filters.pickupStatus === "today" &&
-          filters.pickupDateFrom === today &&
-          filters.pickupDateTo === today
+          filters.pickupDateFrom === todayForCheck &&
+          filters.pickupDateTo === todayForCheck
         );
 
       case "pickup-overdue":
@@ -257,16 +285,18 @@ const Orders = () => {
         );
 
       case "pickup-tomorrow":
-        const tomorrow = new Date();
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        const tomorrowStr = tomorrow.toISOString().split("T")[0];
+        const tomorrowForCheck = new Date();
+        tomorrowForCheck.setDate(tomorrowForCheck.getDate() + 1);
+        const tomorrowStrForCheck = tomorrowForCheck
+          .toISOString()
+          .split("T")[0];
 
         return (
           filters.stage === "Completed" &&
           filters.deliveryMethod === "Pickup" &&
           filters.pickupStatus === "tomorrow" &&
-          filters.pickupDateFrom === tomorrowStr &&
-          filters.pickupDateTo === tomorrowStr
+          filters.pickupDateFrom === tomorrowStrForCheck &&
+          filters.pickupDateTo === tomorrowStrForCheck
         );
 
       case "stage":
@@ -304,6 +334,8 @@ const Orders = () => {
         break;
 
       case "pickup-today":
+        const todayStr = new Date().toISOString().split("T")[0]; // YYYY-MM-DD format
+
         setFilters((prev) => ({
           ...prev,
           stage: "Completed",
@@ -345,9 +377,8 @@ const Orders = () => {
         break;
 
       case "pickup-tomorrow":
-        // Add support for tomorrow quick filter
-        const tomorrow = new Date(today);
-        tomorrow.setDate(tomorrow.getDate() + 1);
+        const today = new Date();
+        const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
         const tomorrowStr = tomorrow.toISOString().split("T")[0];
 
         setFilters((prev) => ({
@@ -447,61 +478,138 @@ const Orders = () => {
           return false;
         }
 
-        const now = new Date();
-        const today = new Date(
-          now.getFullYear(),
-          now.getMonth(),
-          now.getDate()
-        );
-        const pickupDate = new Date(order.pickupSchedule.date);
-        const pickupDateTime = new Date(
-          `${order.pickupSchedule.date}T${order.pickupSchedule.time}`
-        );
+        try {
+          const now = new Date();
+          const today = new Date(
+            now.getFullYear(),
+            now.getMonth(),
+            now.getDate()
+          );
 
-        switch (criteria.pickupStatus) {
-          case "today":
-            return pickupDate.getTime() === today.getTime();
-          case "overdue":
-            return pickupDateTime < now;
-          case "tomorrow":
-            const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
-            return pickupDate.getTime() === tomorrow.getTime();
-          case "upcoming":
-            return pickupDateTime > now;
-          default:
-            return true;
+          const pickupDate = new Date(order.pickupSchedule.date);
+
+          // Check if date is valid
+          if (isNaN(pickupDate.getTime())) {
+            console.warn(
+              "Filtering: Invalid pickup date for order:",
+              order.orderNumber,
+              order.pickupSchedule.date
+            );
+            return false;
+          }
+
+          const pickupDateOnly = new Date(
+            pickupDate.getFullYear(),
+            pickupDate.getMonth(),
+            pickupDate.getDate()
+          );
+
+          const pickupDateTimeString = `${order.pickupSchedule.date}T${order.pickupSchedule.time}`;
+          const pickupDateTime = new Date(pickupDateTimeString);
+
+          // Check if datetime is valid
+          if (isNaN(pickupDateTime.getTime())) {
+            console.warn(
+              "Filtering: Invalid pickup datetime for order:",
+              order.orderNumber,
+              pickupDateTimeString
+            );
+            return false;
+          }
+
+          const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+
+          switch (criteria.pickupStatus) {
+            case "today":
+              return pickupDateOnly.getTime() === today.getTime();
+            case "overdue":
+              return pickupDateTime < now;
+            case "tomorrow":
+              return pickupDateOnly.getTime() === tomorrow.getTime();
+            case "upcoming":
+              return pickupDateTime > now;
+            default:
+              return true;
+          }
+        } catch (error) {
+          console.error(
+            "Error filtering pickup order:",
+            order.orderNumber,
+            error
+          );
+          return false;
         }
       });
     }
 
-    // NEW: Filter by pickup date range
+    // Filter by pickup date range
     if (criteria.pickupDateFrom || criteria.pickupDateTo) {
       filteredOrders = filteredOrders.filter((order) => {
         if (order.deliveryMethod !== "Pickup" || !order.pickupSchedule?.date) {
           return false;
         }
 
-        const pickupDate = new Date(order.pickupSchedule.date);
+        try {
+          const pickupDate = new Date(order.pickupSchedule.date);
 
-        if (criteria.pickupDateFrom) {
-          const fromDate = new Date(criteria.pickupDateFrom);
-          if (pickupDate < fromDate) return false;
+          // Check if date is valid
+          if (isNaN(pickupDate.getTime())) {
+            console.warn(
+              "Date range filtering: Invalid pickup date for order:",
+              order.orderNumber,
+              order.pickupSchedule.date
+            );
+            return false;
+          }
+
+          const pickupDateOnly = new Date(
+            pickupDate.getFullYear(),
+            pickupDate.getMonth(),
+            pickupDate.getDate()
+          );
+
+          if (criteria.pickupDateFrom) {
+            const fromDate = new Date(criteria.pickupDateFrom);
+            if (isNaN(fromDate.getTime())) {
+              console.warn("Invalid from date:", criteria.pickupDateFrom);
+              return false;
+            }
+            const fromDateOnly = new Date(
+              fromDate.getFullYear(),
+              fromDate.getMonth(),
+              fromDate.getDate()
+            );
+            if (pickupDateOnly < fromDateOnly) return false;
+          }
+
+          if (criteria.pickupDateTo) {
+            const toDate = new Date(criteria.pickupDateTo);
+            if (isNaN(toDate.getTime())) {
+              console.warn("Invalid to date:", criteria.pickupDateTo);
+              return false;
+            }
+            const toDateOnly = new Date(
+              toDate.getFullYear(),
+              toDate.getMonth(),
+              toDate.getDate()
+            );
+            if (pickupDateOnly > toDateOnly) return false;
+          }
+
+          return true;
+        } catch (error) {
+          console.error(
+            "Error in date range filtering for order:",
+            order.orderNumber,
+            error
+          );
+          return false;
         }
-
-        if (criteria.pickupDateTo) {
-          const toDate = new Date(criteria.pickupDateTo);
-          // Set to end of day for "to" date
-          toDate.setHours(23, 59, 59, 999);
-          if (pickupDate > toDate) return false;
-        }
-
-        return true;
       });
     }
 
     return filteredOrders;
   };
-
   // Enhanced clearAllFilters function
   const clearAllFilters = () => {
     setFilters({
@@ -548,13 +656,12 @@ const Orders = () => {
 
   // Helper function to format pickup status
   const getPickupStatusDisplay = (order) => {
+    // Early return if not a pickup order
     if (order.deliveryMethod !== "Pickup" || !order.pickupSchedule) {
       return null;
     }
 
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
+    // Check if date and time are provided
     if (!order.pickupSchedule.date || !order.pickupSchedule.time) {
       return {
         label: "Schedule needed",
@@ -563,34 +670,208 @@ const Orders = () => {
       };
     }
 
-    const pickupDate = new Date(order.pickupSchedule.date);
-    const pickupDateTime = new Date(
-      `${order.pickupSchedule.date}T${order.pickupSchedule.time}`
-    );
+    try {
+      const now = new Date();
 
-    if (pickupDateTime < now) {
-      return {
-        label: "Overdue",
-        color: "red",
-        icon: "🚨",
-      };
-    } else if (pickupDate.getTime() === today.getTime()) {
-      return {
-        label: "Today",
-        color: "orange",
-        icon: "📅",
-      };
-    } else if (pickupDate.getTime() === today.getTime() + 24 * 60 * 60 * 1000) {
-      return {
-        label: "Tomorrow",
-        color: "blue",
-        icon: "📅",
-      };
-    } else {
+      // More robust date parsing that handles multiple formats
+      let pickupDate;
+      const dateValue = order.pickupSchedule.date;
+
+      console.log("🔍 Debug pickup date value:", {
+        orderNumber: order.orderNumber,
+        dateValue: dateValue,
+        dateType: typeof dateValue,
+        timeValue: order.pickupSchedule.time,
+        timeType: typeof order.pickupSchedule.time,
+      });
+
+      // Handle different date formats
+      if (typeof dateValue === "string") {
+        // Try different date string formats
+        if (dateValue.includes("T")) {
+          // ISO string format: "2025-08-07T00:00:00.000Z"
+          pickupDate = new Date(dateValue);
+        } else if (dateValue.match(/^\d{4}-\d{2}-\d{2}$/)) {
+          // Date string format: "2025-08-07"
+          pickupDate = new Date(dateValue + "T00:00:00");
+        } else if (dateValue.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
+          // DD/MM/YYYY format
+          const [day, month, year] = dateValue.split("/");
+          pickupDate = new Date(year, month - 1, day);
+        } else if (dateValue.match(/^\d{4}\/\d{2}\/\d{2}$/)) {
+          // YYYY/MM/DD format
+          const [year, month, day] = dateValue.split("/");
+          pickupDate = new Date(year, month - 1, day);
+        } else {
+          // Try direct parsing
+          pickupDate = new Date(dateValue);
+        }
+      } else if (dateValue instanceof Date) {
+        pickupDate = new Date(dateValue);
+      } else {
+        // Try to convert whatever it is to a date
+        pickupDate = new Date(dateValue);
+      }
+
+      // Check if the date is valid
+      if (isNaN(pickupDate.getTime())) {
+        console.warn(
+          "Invalid pickup date for order:",
+          order.orderNumber,
+          "Date value:",
+          dateValue
+        );
+        return {
+          label: "Invalid date",
+          color: "red",
+          icon: "❌",
+        };
+      }
+
+      // Validate time format and create datetime
+      const timeValue = order.pickupSchedule.time;
+      let pickupDateTime;
+
+      // Handle different time formats
+      if (typeof timeValue === "string") {
+        // Normalize time format
+        let normalizedTime = timeValue.trim();
+
+        // Handle 12-hour format (convert to 24-hour)
+        if (
+          normalizedTime.toLowerCase().includes("am") ||
+          normalizedTime.toLowerCase().includes("pm")
+        ) {
+          const timeRegex = /^(\d{1,2}):(\d{2})\s*(am|pm)$/i;
+          const match = normalizedTime.match(timeRegex);
+          if (match) {
+            let hours = parseInt(match[1]);
+            const minutes = match[2];
+            const ampm = match[3].toLowerCase();
+
+            if (ampm === "pm" && hours !== 12) hours += 12;
+            if (ampm === "am" && hours === 12) hours = 0;
+
+            normalizedTime = `${hours.toString().padStart(2, "0")}:${minutes}`;
+          }
+        }
+
+        // Validate 24-hour format
+        const timeRegex = /^([01]?[0-9]|2[0-3]):([0-5][0-9])$/;
+        if (!timeRegex.test(normalizedTime)) {
+          console.warn(
+            "Invalid pickup time for order:",
+            order.orderNumber,
+            "Time value:",
+            timeValue
+          );
+          return {
+            label: "Invalid time",
+            color: "red",
+            icon: "❌",
+          };
+        }
+
+        // Create datetime by combining date and time
+        const dateString = pickupDate.toISOString().split("T")[0]; // Get YYYY-MM-DD
+        pickupDateTime = new Date(`${dateString}T${normalizedTime}:00`);
+      } else {
+        console.warn(
+          "Invalid pickup time type for order:",
+          order.orderNumber,
+          "Time value:",
+          timeValue
+        );
+        return {
+          label: "Invalid time",
+          color: "red",
+          icon: "❌",
+        };
+      }
+
+      // Check if the datetime is valid
+      if (isNaN(pickupDateTime.getTime())) {
+        console.warn(
+          "Invalid pickup datetime for order:",
+          order.orderNumber,
+          "Date:",
+          dateValue,
+          "Time:",
+          timeValue
+        );
+        return {
+          label: "Invalid datetime",
+          color: "red",
+          icon: "❌",
+        };
+      }
+
+      // Get today's date at midnight for accurate date comparison
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+
+      // Set pickup date to midnight for date-only comparison
+      const pickupDateOnly = new Date(pickupDate);
+      pickupDateOnly.setHours(0, 0, 0, 0);
+
+      console.log("✅ Pickup status calculation:", {
+        orderNumber: order.orderNumber,
+        now: now.toISOString(),
+        today: today.toISOString(),
+        tomorrow: tomorrow.toISOString(),
+        pickupDate: pickupDate.toISOString(),
+        pickupDateOnly: pickupDateOnly.toISOString(),
+        pickupDateTime: pickupDateTime.toISOString(),
+      });
+
+      // Check if pickup time has already passed (overdue)
+      if (pickupDateTime < now) {
+        return {
+          label: "Overdue",
+          color: "red",
+          icon: "🚨",
+        };
+      }
+
+      // Check if pickup is today
+      if (pickupDateOnly.getTime() === today.getTime()) {
+        return {
+          label: "Today",
+          color: "orange",
+          icon: "📅",
+        };
+      }
+
+      // Check if pickup is tomorrow
+      if (pickupDateOnly.getTime() === tomorrow.getTime()) {
+        return {
+          label: "Tomorrow",
+          color: "blue",
+          icon: "📅",
+        };
+      }
+
+      // All other future dates
       return {
         label: "Scheduled",
         color: "green",
         icon: "✅",
+      };
+    } catch (error) {
+      console.error(
+        "Error calculating pickup status for order:",
+        order.orderNumber,
+        error
+      );
+      console.error("Pickup schedule data:", order.pickupSchedule);
+
+      return {
+        label: "Error",
+        color: "red",
+        icon: "❌",
       };
     }
   };

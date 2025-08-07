@@ -149,12 +149,12 @@ const Dashboard = () => {
               order.pickupSchedule.date
           )
           .sort((a, b) => {
-            const dateA = new Date(
-              `${a.pickupSchedule.date}T${a.pickupSchedule.time || "00:00"}`
-            );
-            const dateB = new Date(
-              `${b.pickupSchedule.date}T${b.pickupSchedule.time || "00:00"}`
-            );
+            const dateA = parsePickupDateTime(a.pickupSchedule);
+            const dateB = parsePickupDateTime(b.pickupSchedule);
+
+            if (!dateA) return 1;
+            if (!dateB) return -1;
+
             return dateA - dateB;
           });
 
@@ -167,15 +167,119 @@ const Dashboard = () => {
       }
     };
 
+    // FIXED: Enhanced date parsing function
+    const parsePickupDateTime = (pickupSchedule) => {
+      if (!pickupSchedule || !pickupSchedule.date || !pickupSchedule.time) {
+        return null;
+      }
+
+      try {
+        let pickupDate;
+        const dateValue = pickupSchedule.date;
+
+        // Handle different date formats (same logic as Orders page)
+        if (typeof dateValue === "string") {
+          if (dateValue.includes("T")) {
+            // ISO string format: "2025-08-07T00:00:00.000Z"
+            pickupDate = new Date(dateValue);
+          } else if (dateValue.match(/^\d{4}-\d{2}-\d{2}$/)) {
+            // Date string format: "2025-08-07"
+            pickupDate = new Date(dateValue + "T00:00:00");
+          } else if (dateValue.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
+            // DD/MM/YYYY format
+            const [day, month, year] = dateValue.split("/");
+            pickupDate = new Date(year, month - 1, day);
+          } else if (dateValue.match(/^\d{4}\/\d{2}\/\d{2}$/)) {
+            // YYYY/MM/DD format
+            const [year, month, day] = dateValue.split("/");
+            pickupDate = new Date(year, month - 1, day);
+          } else {
+            pickupDate = new Date(dateValue);
+          }
+        } else {
+          pickupDate = new Date(dateValue);
+        }
+
+        if (isNaN(pickupDate.getTime())) {
+          console.warn("Invalid pickup date in dashboard:", dateValue);
+          return null;
+        }
+
+        // Normalize time format
+        let normalizedTime = pickupSchedule.time.trim();
+
+        // Handle 12-hour format (convert to 24-hour)
+        if (
+          normalizedTime.toLowerCase().includes("am") ||
+          normalizedTime.toLowerCase().includes("pm")
+        ) {
+          const timeRegex = /^(\d{1,2}):(\d{2})\s*(am|pm)$/i;
+          const match = normalizedTime.match(timeRegex);
+          if (match) {
+            let hours = parseInt(match[1]);
+            const minutes = match[2];
+            const ampm = match[3].toLowerCase();
+
+            if (ampm === "pm" && hours !== 12) hours += 12;
+            if (ampm === "am" && hours === 12) hours = 0;
+
+            normalizedTime = `${hours.toString().padStart(2, "0")}:${minutes}`;
+          }
+        }
+
+        // Validate time format
+        const timeRegex = /^([01]?[0-9]|2[0-3]):([0-5][0-9])$/;
+        if (!timeRegex.test(normalizedTime)) {
+          console.warn(
+            "Invalid pickup time in dashboard:",
+            pickupSchedule.time
+          );
+          return null;
+        }
+
+        // Create the combined datetime
+        const dateString = pickupDate.toISOString().split("T")[0];
+        const pickupDateTime = new Date(`${dateString}T${normalizedTime}:00`);
+
+        if (isNaN(pickupDateTime.getTime())) {
+          console.warn(
+            "Invalid pickup datetime in dashboard:",
+            dateString,
+            normalizedTime
+          );
+          return null;
+        }
+
+        return pickupDateTime;
+      } catch (error) {
+        console.error("Error parsing pickup datetime in dashboard:", error);
+        return null;
+      }
+    };
+
     const formatPickupDateTime = (pickupSchedule) => {
       if (!pickupSchedule || !pickupSchedule.date) return "Not scheduled";
 
-      const date = formatDate(pickupSchedule.date);
-      const time = pickupSchedule.time || "Time not set";
+      try {
+        const pickupDate = parsePickupDateTime(pickupSchedule);
+        if (!pickupDate) return "Invalid date/time";
 
-      return `${date} at ${time}`;
+        const date = pickupDate.toLocaleDateString("en-AU", {
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+        });
+
+        const time = pickupSchedule.time || "Time not set";
+
+        return `${date} at ${time}`;
+      } catch (error) {
+        console.error("Error formatting pickup datetime:", error);
+        return "Error formatting date";
+      }
     };
 
+    // FIXED: Enhanced pickup status calculation (same logic as Orders page)
     const getPickupStatus = (pickupSchedule) => {
       if (!pickupSchedule || !pickupSchedule.date || !pickupSchedule.time) {
         return {
@@ -185,23 +289,65 @@ const Dashboard = () => {
         };
       }
 
-      const pickupDateTime = new Date(
-        `${pickupSchedule.date}T${pickupSchedule.time}`
-      );
-      const now = new Date();
-      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const pickupDate = new Date(pickupSchedule.date);
+      try {
+        const pickupDateTime = parsePickupDateTime(pickupSchedule);
+        if (!pickupDateTime) {
+          return {
+            status: "invalid",
+            color: "red",
+            label: "Invalid Date/Time",
+          };
+        }
 
-      if (pickupDateTime < now) {
-        return { status: "overdue", color: "red", label: "Overdue" };
-      } else if (pickupDate.getTime() === today.getTime()) {
-        return { status: "today", color: "orange", label: "Today" };
-      } else if (
-        pickupDate <= new Date(today.getTime() + 24 * 60 * 60 * 1000)
-      ) {
-        return { status: "tomorrow", color: "yellow", label: "Tomorrow" };
-      } else {
+        const now = new Date();
+
+        // Get today and tomorrow at midnight for accurate comparison
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+
+        // Get pickup date at midnight for date-only comparison
+        const pickupDateOnly = new Date(pickupDateTime);
+        pickupDateOnly.setHours(0, 0, 0, 0);
+
+        console.log("🔍 Dashboard pickup status debug:", {
+          orderPickupSchedule: pickupSchedule,
+          now: now.toISOString(),
+          today: today.toISOString(),
+          tomorrow: tomorrow.toISOString(),
+          pickupDateTime: pickupDateTime.toISOString(),
+          pickupDateOnly: pickupDateOnly.toISOString(),
+          todayTime: today.getTime(),
+          tomorrowTime: tomorrow.getTime(),
+          pickupDateOnlyTime: pickupDateOnly.getTime(),
+        });
+
+        // Check if overdue (pickup time has passed)
+        if (pickupDateTime < now) {
+          return { status: "overdue", color: "red", label: "Overdue" };
+        }
+
+        // Check if today
+        if (pickupDateOnly.getTime() === today.getTime()) {
+          return { status: "today", color: "orange", label: "Today" };
+        }
+
+        // Check if tomorrow
+        if (pickupDateOnly.getTime() === tomorrow.getTime()) {
+          return { status: "tomorrow", color: "yellow", label: "Tomorrow" };
+        }
+
+        // All other future dates
         return { status: "upcoming", color: "green", label: "Upcoming" };
+      } catch (error) {
+        console.error("Error calculating pickup status in dashboard:", error);
+        return {
+          status: "error",
+          color: "red",
+          label: "Error",
+        };
       }
     };
 
