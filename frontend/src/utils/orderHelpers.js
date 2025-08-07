@@ -8,8 +8,8 @@ export const ORDER_STAGES = {
   READY_TO_PRINT: "Ready to Print",
   PRINTING: "Printing",
   COMPLETED: "Completed",
+  DELIVERED: "Delivered", // NEW STAGE
 };
-
 export const ITEM_TYPES = {
   CUTTER: "Cutter",
   STAMP: "Stamp",
@@ -117,7 +117,8 @@ export const getNextAllowedStages = (currentStage, userRole) => {
         ORDER_STAGES.COMPLETED,
         ORDER_STAGES.READY_TO_PRINT,
       ], // Can go back if needed
-      [ORDER_STAGES.COMPLETED]: [ORDER_STAGES.PRINTING], // Can reopen if needed
+      [ORDER_STAGES.COMPLETED]: [ORDER_STAGES.PRINTING, ORDER_STAGES.DELIVERED], // Can reopen or mark as delivered
+      [ORDER_STAGES.DELIVERED]: [], // Final stage - no further transitions
     };
     return adminTransitions[currentStage] || [];
   } else if (userRole === "baker") {
@@ -133,7 +134,8 @@ export const getNextAllowedStages = (currentStage, userRole) => {
       [ORDER_STAGES.REQUESTED_CHANGES]: [ORDER_STAGES.SUBMITTED], // Wait for admin to make changes
       [ORDER_STAGES.READY_TO_PRINT]: [], // Only admin can move to printing
       [ORDER_STAGES.PRINTING]: [], // Only admin can mark as completed
-      [ORDER_STAGES.COMPLETED]: [], // Final stage
+      [ORDER_STAGES.COMPLETED]: [],
+      [ORDER_STAGES.DELIVERED]: [], // Final stage - no further transitions
     };
     return bakerTransitions[currentStage] || [];
   }
@@ -152,6 +154,7 @@ export const getStageColor = (stage) => {
     [ORDER_STAGES.READY_TO_PRINT]: "indigo",
     [ORDER_STAGES.PRINTING]: "pink",
     [ORDER_STAGES.COMPLETED]: "green",
+    [ORDER_STAGES.DELIVERED]: "emerald", // NEW COLOR
   };
 
   return colors[stage] || "gray";
@@ -192,6 +195,11 @@ export const getStageDescription = (stage, userRole) => {
     [ORDER_STAGES.COMPLETED]: {
       baker: "Your order is complete! Set delivery and payment details.",
       admin: "Order is completed and ready for pickup/delivery.",
+    },
+    [ORDER_STAGES.DELIVERED]: {
+      baker: "Your order has been delivered or picked up. Order is complete!",
+      admin:
+        "Order has been delivered to baker or picked up. Final stage reached.",
     },
   };
 
@@ -467,6 +475,8 @@ export const getStageTransitionLabel = (fromStage, toStage, userRole) => {
     [`${ORDER_STAGES.READY_TO_PRINT}-${ORDER_STAGES.PRINTING}`]:
       "Start Printing",
     [`${ORDER_STAGES.PRINTING}-${ORDER_STAGES.COMPLETED}`]: "Mark Complete",
+    [`${ORDER_STAGES.COMPLETED}-${ORDER_STAGES.DELIVERED}`]:
+      "Mark as Delivered",
   };
 
   const key = `${fromStage}-${toStage}`;

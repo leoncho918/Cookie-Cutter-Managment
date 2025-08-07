@@ -984,6 +984,17 @@ const Orders = () => {
               </button>
 
               <button
+                onClick={() => applyQuickFilter("stage", "Delivered")}
+                className={`px-3 py-1 text-xs rounded-full border transition-colors ${
+                  isQuickFilterActive("stage", "Delivered")
+                    ? "bg-emerald-100 border-emerald-300 text-emerald-700"
+                    : "bg-gray-100 border-gray-300 text-gray-600 hover:bg-gray-200"
+                }`}
+              >
+                🚚 Delivered Orders
+              </button>
+
+              <button
                 onClick={() => applyQuickFilter("pickup-today")}
                 className={`px-3 py-1 text-xs rounded-full border transition-colors ${
                   isQuickFilterActive("pickup-today")

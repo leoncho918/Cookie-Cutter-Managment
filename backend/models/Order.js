@@ -75,6 +75,7 @@ const orderSchema = new mongoose.Schema({
       "Ready to Print",
       "Printing",
       "Completed",
+      "Delivered", // NEW STAGE
     ],
     default: "Draft",
   },

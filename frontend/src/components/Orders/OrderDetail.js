@@ -1158,7 +1158,7 @@ const OrderDetail = () => {
                                         w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium
                                         ${
                                           isCurrent &&
-                                          order.stage !== ORDER_STAGES.COMPLETED
+                                          order.stage !== ORDER_STAGES.DELIVERED
                                             ? `bg-blue-600 text-white`
                                             : isCompleted
                                             ? "bg-green-600 text-white"
