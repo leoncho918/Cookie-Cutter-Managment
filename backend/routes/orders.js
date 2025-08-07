@@ -58,7 +58,7 @@ router.get("/", requireBakerOrAdmin, async (req, res) => {
     }
 
     // Add this new section here
-    if (pendingUpdates === "true") {
+    if (pendingUpdates === "true" && req.user.role === "admin") {
       query["updateRequest.status"] = "pending";
     }
 
@@ -1158,6 +1158,8 @@ router.put("/:id/completion", async (req, res) => {
       if (order.updateRequest && order.updateRequest.status === "approved") {
         order.updateRequest = undefined;
       }
+
+      await order.save();
     }
 
     console.log("📋 Order completion details updated:", {
@@ -1364,90 +1366,89 @@ router.get("/stats/overview", requireAdmin, async (req, res) => {
 });
 
 // Request completion details update (Baker only)
-router.post("/:id/request-completion-update", async (req, res) => {
-  try {
-    if (!order.detailsConfirmed) {
-      return res.status(400).json({
-        message: "Please confirm your details first before requesting updates",
-        requiresConfirmation: true,
+router.post(
+  "/:id/request-completion-update",
+  requireBakerOrAdmin,
+  async (req, res) => {
+    try {
+      const { requestedChanges, reason } = req.body;
+      const order = await Order.findById(req.params.id);
+
+      if (!order) {
+        return res.status(404).json({ message: "Order not found" });
+      }
+
+      if (order.bakerId !== req.user.bakerId && req.user.role !== "admin") {
+        return res.status(403).json({ message: "Access denied to this order" });
+      }
+
+      if (order.stage !== "Completed") {
+        return res.status(400).json({
+          message: "Can only request updates for completed orders",
+        });
+      }
+
+      // Check if there's already a pending request
+      if (order.updateRequest && order.updateRequest.status === "pending") {
+        return res.status(400).json({
+          message: "There is already a pending update request for this order",
+        });
+      }
+
+      // Store the update request
+      order.updateRequest = {
+        requestedBy: req.user._id,
+        requestedAt: new Date(),
+        requestedChanges,
+        reason,
+        status: "pending",
+      };
+
+      await order.save();
+
+      console.log("📋 Update request created:", {
+        orderId: order._id,
+        orderNumber: order.orderNumber,
+        requestedBy: req.user.email,
+        reason: reason,
       });
-    }
 
-    if (req.user.role !== "baker") {
-      return res
-        .status(403)
-        .json({ message: "Only bakers can request updates" });
-    }
-
-    const { requestedChanges, reason } = req.body;
-    const order = await Order.findById(req.params.id);
-
-    if (!order) {
-      return res.status(404).json({ message: "Order not found" });
-    }
-
-    if (order.bakerId !== req.user.bakerId) {
-      return res.status(403).json({ message: "Access denied to this order" });
-    }
-
-    if (order.stage !== "Completed") {
-      return res.status(400).json({
-        message: "Can only request updates for completed orders",
-      });
-    }
-
-    // Store the update request
-    order.updateRequest = {
-      requestedBy: req.user._id,
-      requestedAt: new Date(),
-      requestedChanges,
-      reason,
-      status: "pending",
-    };
-
-    await order.save();
-
-    console.log("📋 Update request created:", {
-      orderId: order._id,
-      orderNumber: order.orderNumber,
-      requestedBy: req.user.email,
-      reason: reason,
-    });
-
-    // Send email notification to admin
-    await sendUpdateRequestNotification(
-      order.bakerEmail,
-      order.orderNumber,
-      reason
-    );
-
-    // Emit real-time update
-    const io = req.app.get("io");
-    if (io) {
-      emitOrderUpdate(
-        io,
-        order._id,
-        order,
-        "update_requested",
-        req.user._id,
-        req.user.email
+      // Send email notification to admin
+      const { sendUpdateRequestNotification } = require("../utils/email");
+      await sendUpdateRequestNotification(
+        order.bakerEmail,
+        order.orderNumber,
+        reason
       );
+
+      // Emit real-time update
+      const io = req.app.get("io");
+      if (io) {
+        const { emitOrderUpdate } = require("../utils/socketUtils");
+        emitOrderUpdate(
+          io,
+          order._id,
+          order,
+          "update_requested",
+          req.user._id,
+          req.user.email
+        );
+      }
+
+      res.json({
+        message: "Update request sent to admin successfully",
+        order,
+      });
+    } catch (error) {
+      console.error("Error creating update request:", error);
+      res.status(500).json({ message: "Server error creating update request" });
     }
-
-    res.json({
-      message: "Update request sent to admin successfully",
-      order,
-    });
-  } catch (error) {
-    console.error("Error creating update request:", error);
-    res.status(500).json({ message: "Server error creating update request" });
   }
-});
-
+);
 // Admin approve/reject update request
 router.put("/:id/update-request/:action", requireAdmin, async (req, res) => {
   try {
-    const { action } = req.params; // 'approve' or 'reject'
+    const { action } = req.params;
     const { adminResponse } = req.body;
     const order = await Order.findById(req.params.id);
 
@@ -1471,6 +1472,7 @@ router.put("/:id/update-request/:action", requireAdmin, async (req, res) => {
     order.updateRequest.respondedBy = req.user._id;
     order.updateRequest.respondedAt = new Date();
 
+    // If approved, unlock the details for editing
     if (action === "approve") {
       order.detailsConfirmed = false;
       order.detailsConfirmedAt = undefined;
@@ -1487,6 +1489,7 @@ router.put("/:id/update-request/:action", requireAdmin, async (req, res) => {
     });
 
     // Send email notification to baker
+    const { sendUpdateRequestResponseEmail } = require("../utils/email");
     await sendUpdateRequestResponseEmail(
       order.bakerEmail,
       order.orderNumber,
@@ -1497,6 +1500,7 @@ router.put("/:id/update-request/:action", requireAdmin, async (req, res) => {
     // Emit real-time update
     const io = req.app.get("io");
     if (io) {
+      const { emitOrderUpdate } = require("../utils/socketUtils");
       emitOrderUpdate(
         io,
         order._id,

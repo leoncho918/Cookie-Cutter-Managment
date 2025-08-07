@@ -173,6 +173,17 @@ const OrderDetail = () => {
             case "completion_updated":
               message = `Completion details updated by ${updatedBy.email}`;
               break;
+            case "update_requested":
+              if (user.role === "admin") {
+                message = `Update request for order ${updatedOrder.orderNumber} from ${updatedBy.email}`;
+              }
+              break;
+            case "update_request_approved":
+              message = `Update request approved for order ${updatedOrder.orderNumber}`;
+              break;
+            case "update_request_rejected":
+              message = `Update request rejected for order ${updatedOrder.orderNumber}`;
+              break;
             default:
               message = `Order ${eventType.replace("_", " ")} by ${
                 updatedBy.email
@@ -993,60 +1004,106 @@ const OrderDetail = () => {
           </div>
         )}
 
+        {order.updateRequest && order.updateRequest.status === "rejected" && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded">
+            <div className="text-red-800 text-sm">
+              <div className="font-medium">Update request rejected</div>
+              {order.updateRequest.adminResponse && (
+                <div className="mt-1">
+                  Reason: {order.updateRequest.adminResponse}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* CRITICAL FIX: Action Buttons Section */}
-        <div className="mt-4 flex justify-between items-center">
-          {order.detailsConfirmed ? (
-            // Details are confirmed - show status with update request button
-            <div className="text-green-600 text-sm">
-              <div className="flex items-center">
+        <div className="flex justify-between items-center">
+          <div>
+            {order.detailsConfirmed ? (
+              <div className="text-green-600 text-sm flex items-center">
                 <span className="text-green-500 mr-2">✅</span>
                 Details confirmed on{" "}
                 {new Date(order.detailsConfirmedAt).toLocaleDateString("en-AU")}
               </div>
-              <div className="mt-2">
-                <Button
-                  variant="outline"
-                  size="small"
-                  onClick={handleOpenUpdateRequestModal}
-                  className="text-xs"
-                >
-                  📧 Request to Update Details
-                </Button>
+            ) : (
+              <div className="text-gray-600 text-sm">
+                Details need to be confirmed once finalized
               </div>
-            </div>
-          ) : (
-            // Details are NOT confirmed - show action buttons
-            <div className="flex space-x-3">
-              {!order.deliveryMethod || !order.paymentMethod ? (
-                // No details set yet
+            )}
+          </div>
+
+          <div className="flex space-x-2">
+            {/* Show update request status indicators */}
+            {order.updateRequest &&
+              order.updateRequest.status === "pending" && (
+                <span className="px-2 py-1 text-xs font-medium bg-yellow-100 text-yellow-800 rounded">
+                  Update Request Pending
+                </span>
+              )}
+            {order.updateRequest &&
+              order.updateRequest.status === "rejected" && (
+                <span className="px-2 py-1 text-xs font-medium bg-red-100 text-red-800 rounded">
+                  Update Request Rejected
+                </span>
+              )}
+
+            {order.detailsConfirmed ? (
+              // Details are confirmed - show request update button
+              <Button
+                variant="outline"
+                size="small"
+                onClick={handleOpenUpdateRequestModal}
+                disabled={
+                  order.updateRequest &&
+                  order.updateRequest.status === "pending"
+                }
+                className="text-xs"
+              >
+                {order.updateRequest && order.updateRequest.status === "pending"
+                  ? "Request Pending..."
+                  : "📧 Request to Update Details"}
+              </Button>
+            ) : order.updateRequest &&
+              order.updateRequest.status === "approved" ? (
+              // Update request approved - show edit button with special styling
+              <Button
+                variant="primary"
+                size="small"
+                onClick={handleOpenCompletionModal}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                Update Details (Approved)
+              </Button>
+            ) : !order.deliveryMethod || !order.paymentMethod ? (
+              // No details set yet - keep existing button
+              <Button
+                variant="primary"
+                size="small"
+                onClick={handleOpenCompletionModal}
+              >
+                Set Collection & Payment Details
+              </Button>
+            ) : (
+              // Details are set but not confirmed - keep existing buttons
+              <>
                 <Button
                   variant="primary"
                   size="small"
+                  onClick={handleOpenConfirmationModal}
+                >
+                  Confirm Details
+                </Button>
+                <Button
+                  variant="outline"
+                  size="small"
                   onClick={handleOpenCompletionModal}
                 >
-                  Set Collection & Payment Details
+                  Edit Details
                 </Button>
-              ) : (
-                // Details are set but not confirmed - show BOTH buttons
-                <>
-                  <Button
-                    variant="primary"
-                    size="small"
-                    onClick={handleOpenConfirmationModal}
-                  >
-                    Confirm Details
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="small"
-                    onClick={handleOpenCompletionModal}
-                  >
-                    Edit Details
-                  </Button>
-                </>
-              )}
-            </div>
-          )}
+              </>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -1097,13 +1154,18 @@ const OrderDetail = () => {
     try {
       setActionLoading(true);
 
+      if (!updateRequestModal.reason.trim()) {
+        showError("Please provide a reason for the update request");
+        return;
+      }
+
       await axios.post(`/orders/${id}/request-completion-update`, {
         requestedChanges: updateRequestModal.requestedChanges,
         reason: updateRequestModal.reason,
       });
 
       showSuccess("Update request sent to admin successfully");
-      loadOrder(); // Reload to show pending status
+      loadOrder();
       setUpdateRequestModal({
         isOpen: false,
         reason: "",
@@ -1122,6 +1184,110 @@ const OrderDetail = () => {
     } finally {
       setActionLoading(false);
     }
+  };
+
+  const handleUpdateRequestResponse = async (
+    orderId,
+    action,
+    adminResponse
+  ) => {
+    try {
+      setActionLoading(true);
+
+      await axios.put(`/orders/${orderId}/update-request/${action}`, {
+        adminResponse: adminResponse || "",
+      });
+
+      showSuccess(`Update request ${action}d successfully`);
+      loadOrder();
+    } catch (error) {
+      console.error("Error responding to update request:", error);
+      showError(
+        error.response?.data?.message || "Failed to respond to update request"
+      );
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const renderAdminUpdateRequestSection = () => {
+    if (
+      user.role !== "admin" ||
+      !order.updateRequest ||
+      order.updateRequest.status !== "pending"
+    ) {
+      return null;
+    }
+
+    return (
+      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 mb-6">
+        <div className="flex items-start justify-between">
+          <div>
+            <h3 className="text-lg font-medium text-yellow-800 mb-2">
+              🔔 Pending Update Request
+            </h3>
+            <div className="space-y-2 text-sm text-yellow-700">
+              <div>
+                <span className="font-medium">Requested by:</span>{" "}
+                {order.bakerEmail}
+              </div>
+              <div>
+                <span className="font-medium">Requested on:</span>{" "}
+                {formatDate(order.updateRequest.requestedAt)}
+              </div>
+              <div>
+                <span className="font-medium">Reason:</span>{" "}
+                {order.updateRequest.reason}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex space-x-2 ml-4">
+            <Button
+              variant="primary"
+              size="small"
+              onClick={() => {
+                const adminResponse = window.prompt(
+                  "Optional: Add a note for the baker (or leave empty):"
+                );
+                if (adminResponse !== null) {
+                  handleUpdateRequestResponse(
+                    order._id,
+                    "approve",
+                    adminResponse
+                  );
+                }
+              }}
+              disabled={actionLoading}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              ✅ Approve Request
+            </Button>
+            <Button
+              variant="danger"
+              size="small"
+              onClick={() => {
+                const adminResponse = window.prompt(
+                  "Please provide a reason for rejecting this request:"
+                );
+                if (adminResponse && adminResponse.trim()) {
+                  handleUpdateRequestResponse(
+                    order._id,
+                    "reject",
+                    adminResponse
+                  );
+                } else if (adminResponse !== null) {
+                  showError("A reason is required when rejecting a request");
+                }
+              }}
+              disabled={actionLoading}
+            >
+              ❌ Reject Request
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -1155,6 +1321,8 @@ const OrderDetail = () => {
           </div>
         </div>
       </div>
+
+      {renderAdminUpdateRequestSection()}
 
       {/* Baker Edit Notice */}
       {canBakerEdit() && (

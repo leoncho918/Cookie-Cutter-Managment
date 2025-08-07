@@ -81,6 +81,17 @@ const Orders = () => {
           case "completion_updated":
             message = `Order ${updatedOrder.orderNumber} completion details updated`;
             break;
+          case "update_requested":
+            if (user.role === "admin") {
+              message = `Update request for order ${updatedOrder.orderNumber} from ${updatedBy.email}`;
+            }
+            break;
+          case "update_request_approved":
+            message = `Update request approved for order ${updatedOrder.orderNumber}`;
+            break;
+          case "update_request_rejected":
+            message = `Update request rejected for order ${updatedOrder.orderNumber}`;
+            break;
           default:
             message = `Order ${updatedOrder.orderNumber} ${eventType.replace(
               "_",
@@ -194,11 +205,11 @@ const Orders = () => {
       if (filters.pickupDateTo)
         params.append("pickupDateTo", filters.pickupDateTo);
       // In the loadOrders function, modify the params building section
+      // Handle special "pending_updates" filter for admins
       if (filters.stage === "pending_updates") {
-        // Don't include the regular stage filter, we'll handle this on backend
-        params.pendingUpdates = true;
+        params.append("pendingUpdates", "true");
       } else if (filters.stage) {
-        params.stage = filters.stage;
+        params.append("stage", filters.stage);
       }
 
       const response = await axios.get(
@@ -895,6 +906,35 @@ const Orders = () => {
     );
   };
 
+  const renderUpdateRequestIndicator = (order) => {
+    if (!order.updateRequest) return null;
+
+    const { status } = order.updateRequest;
+
+    switch (status) {
+      case "pending":
+        return (
+          <span className="inline-flex items-center px-2 py-1 text-xs font-medium bg-yellow-100 text-yellow-800 rounded-full">
+            🔔 Update Request Pending
+          </span>
+        );
+      case "approved":
+        return (
+          <span className="inline-flex items-center px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
+            ✅ Update Approved
+          </span>
+        );
+      case "rejected":
+        return (
+          <span className="inline-flex items-center px-2 py-1 text-xs font-medium bg-red-100 text-red-800 rounded-full">
+            ❌ Update Rejected
+          </span>
+        );
+      default:
+        return null;
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -1092,7 +1132,7 @@ const Orders = () => {
               <option value="">All Stages</option>
               {user.role === "admin" && (
                 <option value="pending_updates">
-                  Orders with Pending Update Requests
+                  🔔 Orders with Pending Update Requests
                 </option>
               )}
               {Object.values(ORDER_STAGES).map((stage) => (
@@ -1280,7 +1320,10 @@ const Orders = () => {
 
                 {filters.stage && (
                   <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                    Stage: {filters.stage}
+                    Stage:{" "}
+                    {filters.stage === "pending_updates"
+                      ? "Pending Update Requests"
+                      : filters.stage}
                     <button
                       onClick={() => handleFilterChange("stage", "")}
                       className="ml-1 text-blue-600 hover:text-blue-800"
@@ -1503,16 +1546,25 @@ const Orders = () => {
                       </td>
 
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span
-                          className={`
-                            inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
-                            bg-${getStageColor(
-                              order.stage
-                            )}-100 text-${getStageColor(order.stage)}-800
-                          `}
-                        >
-                          {order.stage}
-                        </span>
+                        <div className="space-y-1">
+                          {/* Existing completion status for completed orders */}
+                          {order.stage === "Completed" && (
+                            <div>
+                              {order.detailsConfirmed ? (
+                                <span className="inline-flex items-center px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
+                                  ✅ Details Confirmed
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center px-2 py-1 text-xs font-medium bg-orange-100 text-orange-800 rounded-full">
+                                  ⏳ Needs Confirmation
+                                </span>
+                              )}
+                            </div>
+                          )}
+
+                          {/* NEW: Update request status */}
+                          {renderUpdateRequestIndicator(order)}
+                        </div>
                       </td>
 
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
