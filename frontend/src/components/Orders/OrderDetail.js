@@ -880,6 +880,12 @@ const OrderDetail = () => {
   const renderCompletionDetails = () => {
     if (order.stage !== ORDER_STAGES.COMPLETED) return null;
 
+    // IMPORTANT: Ensure both Bakers and Admins can see completion details
+    // Only the Baker who owns the order and Admins should see this section
+    if (user.role === "baker" && order.bakerId !== user.bakerId) {
+      return null; // Baker can only see their own order's completion details
+    }
+
     const isInternationalDelivery =
       order.deliveryMethod === "Delivery" &&
       order.deliveryAddress?.country &&
@@ -894,9 +900,9 @@ const OrderDetail = () => {
               🌍 International
             </span>
           )}
-          {/* NEW: Confirmation status indicator */}
+          {/* Confirmation status indicator */}
           {order.detailsConfirmed && (
-            <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
+            <span className="ml-2 inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
               ✅ Confirmed
             </span>
           )}
@@ -909,7 +915,7 @@ const OrderDetail = () => {
             </span>
             <div>
               <div className="text-sm font-medium text-gray-700">
-                Delivery Method:
+                Collection Method:
               </div>
               <div className="text-sm text-gray-900">
                 {order.deliveryMethod || "Not specified"}
@@ -935,241 +941,104 @@ const OrderDetail = () => {
           </div>
         </div>
 
-        {/* International Delivery Address Details - Enhanced */}
-        {order.deliveryMethod === "Delivery" && (
-          <div className="mt-6">
-            {order.deliveryAddress &&
-            order.deliveryAddress.street &&
-            order.deliveryAddress.suburb &&
-            order.deliveryAddress.state &&
-            order.deliveryAddress.postcode &&
-            order.deliveryAddress.country ? (
-              <div
-                className={`border rounded-lg p-4 ${
-                  isInternationalDelivery
-                    ? "bg-blue-50 border-blue-200"
-                    : "bg-green-50 border-green-200"
-                }`}
-              >
-                <div>
-                  <h5
-                    className={`text-sm font-medium mb-2 ${
-                      isInternationalDelivery
-                        ? "text-blue-800"
-                        : "text-green-800"
-                    }`}
-                  >
-                    🏠 Delivery Address
-                    {isInternationalDelivery && (
-                      <span className="ml-2 text-blue-600">
-                        🌍 International Shipping
-                      </span>
-                    )}
-                  </h5>
-                  <div
-                    className={`space-y-1 ${
-                      isInternationalDelivery
-                        ? "text-blue-700"
-                        : "text-green-700"
-                    }`}
-                  >
-                    <div className="font-semibold">
-                      {order.deliveryAddress.street}
+        {/* Pickup Schedule Details */}
+        {order.deliveryMethod === "Pickup" && order.pickupSchedule && (
+          <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex items-center">
+              <span className="text-blue-600 text-lg mr-3">📅</span>
+              <div>
+                <div className="text-sm font-medium text-blue-800">
+                  Scheduled Pickup:
+                </div>
+                <div className="text-sm text-blue-900">
+                  {new Date(order.pickupSchedule.date).toLocaleDateString(
+                    "en-AU"
+                  )}{" "}
+                  at {order.pickupSchedule.time}
+                  {order.pickupSchedule.notes && (
+                    <div className="text-xs text-blue-700 mt-1">
+                      Notes: {order.pickupSchedule.notes}
                     </div>
-                    <div>
-                      {order.deliveryAddress.suburb}{" "}
-                      {order.deliveryAddress.state}{" "}
-                      {order.deliveryAddress.postcode}
-                    </div>
-                    <div className="font-medium">
-                      {order.deliveryAddress.country}
-                    </div>
-                    {order.deliveryAddress.instructions && (
-                      <div className="text-sm mt-2">
-                        <strong>Delivery Instructions:</strong>{" "}
-                        {order.deliveryAddress.instructions}
-                      </div>
-                    )}
-
-                    {/* International Delivery Notice */}
-                    {isInternationalDelivery && (
-                      <div className="mt-3 p-2 bg-blue-100 border border-blue-300 rounded text-xs">
-                        <strong>International Delivery:</strong> Additional
-                        shipping charges and customs duties may apply. You will
-                        be contacted to arrange international shipping details
-                        and costs.
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                <div className="flex items-center">
-                  <span className="text-yellow-600 text-xl mr-3">⚠️</span>
-                  <div>
-                    <h5 className="text-sm font-medium text-yellow-800">
-                      Delivery Address Needed
-                    </h5>
-                    <p className="text-yellow-700 text-sm">
-                      Please provide your delivery address to complete the order
-                      process.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Enhanced Payment Method Notifications */}
-        {order.paymentMethod && (
-          <div className="mt-6">
-            {order.paymentMethod === "Card" && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <div className="flex items-start">
-                  <span className="text-blue-600 text-lg mr-3">💳</span>
-                  <div>
-                    <h5 className="text-sm font-medium text-blue-800">
-                      Card Payment Information
-                    </h5>
-                    <p className="text-blue-700 text-sm mt-1">
-                      An invoice will be sent to your registered email address (
-                      {order.bakerEmail}) for card payment processing.
-                      {isInternationalDelivery && (
-                        <span className="block mt-1 font-medium">
-                          International shipping charges will be included in the
-                          final invoice.
-                        </span>
-                      )}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {order.paymentMethod === "Cash" && (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                <div className="flex items-start">
-                  <span className="text-yellow-600 text-lg mr-3">💵</span>
-                  <div>
-                    <h5 className="text-sm font-medium text-yellow-800">
-                      Cash Payment Information
-                    </h5>
-                    <p className="text-yellow-700 text-sm mt-1">
-                      {order.price ? (
-                        <>
-                          Please bring exactly{" "}
-                          <strong>${order.price.toFixed(2)}</strong>, or as
-                          close as possible, as we only carry coins for change.
-                          {isInternationalDelivery && (
-                            <span className="block mt-1 font-medium text-orange-700">
-                              Note: International shipping charges are not
-                              included in this amount and will need to be paid
-                              separately.
-                            </span>
-                          )}
-                        </>
-                      ) : (
-                        "Please bring the exact amount, or as close as possible, as we only carry coins for change."
-                      )}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Action button for bakers to update details */}
-        {user.role === "baker" &&
-          order.bakerId === user.bakerId &&
-          order.stage === "Completed" && (
-            <div className="mt-4">
-              {/* Show different UI based on update request status */}
-              {order.updateRequest?.status === "pending" ? (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                  <div className="flex items-center">
-                    <span className="text-yellow-500 text-lg mr-2">⏳</span>
-                    <div>
-                      <h4 className="text-sm font-medium text-yellow-800">
-                        Update Request Pending
-                      </h4>
-                      <p className="text-sm text-yellow-700 mt-1">
-                        Your request to update collection and payment details is
-                        awaiting admin approval.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              ) : order.updateRequest?.status === "rejected" ? (
-                <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
-                  <div className="flex items-center">
-                    <span className="text-red-500 text-lg mr-2">❌</span>
-                    <div>
-                      <h4 className="text-sm font-medium text-red-800">
-                        Update Request Rejected
-                      </h4>
-                      <p className="text-sm text-red-700 mt-1">
-                        {order.updateRequest.adminResponse ||
-                          "Your update request was not approved."}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                // NEW: Enhanced button logic with confirmation workflow
-                <div className="flex space-x-3">
-                  {!order.deliveryMethod || !order.paymentMethod ? (
-                    <Button
-                      variant="primary"
-                      size="small"
-                      onClick={handleOpenCompletionModal}
-                    >
-                      Set Collection & Payment Details
-                    </Button>
-                  ) : !order.detailsConfirmed ? (
-                    <>
-                      <Button
-                        variant="primary"
-                        size="small"
-                        onClick={handleOpenConfirmationModal}
-                      >
-                        Confirm Details
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="small"
-                        onClick={handleOpenCompletionModal}
-                      >
-                        Edit Details
-                      </Button>
-                    </>
-                  ) : order.updateRequest?.status === "approved" ? (
-                    <Button
-                      variant="primary"
-                      size="small"
-                      onClick={handleOpenCompletionModal}
-                    >
-                      Update Collection & Payment Details
-                    </Button>
-                  ) : order.updateRequest?.status === "pending" ? (
-                    <Button variant="outline" size="small" disabled>
-                      Update Request Pending
-                    </Button>
-                  ) : (
-                    <Button
-                      variant="secondary"
-                      size="small"
-                      onClick={handleOpenUpdateRequestModal}
-                    >
-                      Request to Update Details
-                    </Button>
                   )}
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Delivery Address Details */}
+        {order.deliveryMethod === "Delivery" && order.deliveryAddress && (
+          <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+            <div className="flex items-center">
+              <span className="text-green-600 text-lg mr-3">🏠</span>
+              <div>
+                <div className="text-sm font-medium text-green-800">
+                  Delivery Address:
+                </div>
+                <div className="text-sm text-green-900">
+                  <div>{order.deliveryAddress.street}</div>
+                  <div>
+                    {order.deliveryAddress.suburb} {order.deliveryAddress.state}{" "}
+                    {order.deliveryAddress.postcode}
+                  </div>
+                  <div>{order.deliveryAddress.country}</div>
+                  {order.deliveryAddress.instructions && (
+                    <div className="text-xs text-green-700 mt-1">
+                      Instructions: {order.deliveryAddress.instructions}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* CRITICAL FIX: Action Buttons Section */}
+        <div className="mt-4 flex justify-between items-center">
+          {order.detailsConfirmed ? (
+            // Details are confirmed - show status
+            <div className="text-green-600 text-sm flex items-center">
+              <span className="text-green-500 mr-2">✅</span>
+              Details confirmed on{" "}
+              {new Date(order.detailsConfirmedAt).toLocaleDateString("en-AU")}
+              <div className="ml-4 text-xs text-gray-500">
+                <p>📧 Contact admin if you need to update these details</p>
+              </div>
+            </div>
+          ) : (
+            // Details are NOT confirmed - show action buttons
+            <div className="flex space-x-3">
+              {!order.deliveryMethod || !order.paymentMethod ? (
+                // No details set yet
+                <Button
+                  variant="primary"
+                  size="small"
+                  onClick={handleOpenCompletionModal}
+                >
+                  Set Collection & Payment Details
+                </Button>
+              ) : (
+                // Details are set but not confirmed - show BOTH buttons
+                <>
+                  <Button
+                    variant="primary"
+                    size="small"
+                    onClick={handleOpenConfirmationModal}
+                  >
+                    Confirm Details
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="small"
+                    onClick={handleOpenCompletionModal}
+                  >
+                    Edit Details
+                  </Button>
+                </>
               )}
             </div>
           )}
+        </div>
       </div>
     );
   };
