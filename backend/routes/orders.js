@@ -1382,11 +1382,30 @@ router.post(
         });
       }
 
-      // Check if there's already a pending request
-      if (order.updateRequest && order.updateRequest.status === "pending") {
+      // Check if there's already a valid pending request
+      // Only consider it pending if it has all required fields
+      if (
+        order.updateRequest &&
+        order.updateRequest.status === "pending" &&
+        order.updateRequest.requestedBy &&
+        order.updateRequest.requestedAt
+      ) {
         return res.status(400).json({
           message: "There is already a pending update request for this order",
         });
+      }
+
+      // Clean up any malformed updateRequest objects
+      if (
+        order.updateRequest &&
+        (!order.updateRequest.status ||
+          !order.updateRequest.requestedBy ||
+          !order.updateRequest.requestedAt)
+      ) {
+        console.log(
+          `Cleaning up malformed updateRequest for order ${order.orderNumber}`
+        );
+        order.updateRequest = undefined;
       }
 
       // Store the update request

@@ -901,7 +901,20 @@ const Orders = () => {
   };
 
   const renderUpdateRequestIndicator = (order) => {
-    if (!order.updateRequest) return null;
+    // More comprehensive validation to prevent false positives
+    if (
+      !order.updateRequest ||
+      !order.updateRequest.status ||
+      !order.updateRequest.requestedBy ||
+      !order.updateRequest.requestedAt
+    ) {
+      return null;
+    }
+
+    // Additional check: Only show update request badges for completed orders
+    if (order.stage !== "Completed") {
+      return null;
+    }
 
     const { status } = order.updateRequest;
 

@@ -1004,18 +1004,23 @@ const OrderDetail = () => {
           </div>
         )}
 
-        {order.updateRequest && order.updateRequest.status === "rejected" && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded">
-            <div className="text-red-800 text-sm">
-              <div className="font-medium">Update request rejected</div>
-              {order.updateRequest.adminResponse && (
-                <div className="mt-1">
-                  Reason: {order.updateRequest.adminResponse}
-                </div>
-              )}
+        {order.updateRequest &&
+          order.updateRequest.status &&
+          order.updateRequest.requestedBy &&
+          order.updateRequest.requestedAt &&
+          order.stage === "Completed" &&
+          order.updateRequest.status === "rejected" && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded">
+              <div className="text-red-800 text-sm">
+                <div className="font-medium">Update request rejected</div>
+                {order.updateRequest.adminResponse && (
+                  <div className="mt-1">
+                    Reason: {order.updateRequest.adminResponse}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
         {/* CRITICAL FIX: Action Buttons Section */}
         <div className="flex justify-between items-center">
@@ -1036,35 +1041,54 @@ const OrderDetail = () => {
           <div className="flex space-x-2">
             {/* Show update request status indicators */}
             {order.updateRequest &&
+              order.updateRequest.status &&
+              order.updateRequest.requestedBy &&
+              order.updateRequest.requestedAt &&
+              order.stage === "Completed" &&
               order.updateRequest.status === "pending" && (
                 <span className="px-2 py-1 text-xs font-medium bg-yellow-100 text-yellow-800 rounded">
                   Update Request Pending
                 </span>
               )}
             {order.updateRequest &&
+              order.updateRequest.status &&
+              order.updateRequest.requestedBy &&
+              order.updateRequest.requestedAt &&
+              order.stage === "Completed" &&
               order.updateRequest.status === "rejected" && (
                 <span className="px-2 py-1 text-xs font-medium bg-red-100 text-red-800 rounded">
                   Update Request Rejected
                 </span>
               )}
 
-            {order.detailsConfirmed ? (
-              // Details are confirmed - show request update button
+            {order.stage === "Completed" && order.detailsConfirmed ? (
+              // Details are confirmed - show request update button (only for completed orders)
               <Button
                 variant="outline"
                 size="small"
                 onClick={handleOpenUpdateRequestModal}
                 disabled={
                   order.updateRequest &&
+                  order.updateRequest.status &&
+                  order.updateRequest.requestedBy &&
+                  order.updateRequest.requestedAt &&
                   order.updateRequest.status === "pending"
                 }
                 className="text-xs"
               >
-                {order.updateRequest && order.updateRequest.status === "pending"
+                {order.updateRequest &&
+                order.updateRequest.status &&
+                order.updateRequest.requestedBy &&
+                order.updateRequest.requestedAt &&
+                order.updateRequest.status === "pending"
                   ? "Request Pending..."
                   : "📧 Request to Update Details"}
               </Button>
-            ) : order.updateRequest &&
+            ) : order.stage === "Completed" &&
+              order.updateRequest &&
+              order.updateRequest.status &&
+              order.updateRequest.requestedBy &&
+              order.updateRequest.requestedAt &&
               order.updateRequest.status === "approved" ? (
               // Update request approved - show edit button with special styling
               <Button
@@ -1075,8 +1099,9 @@ const OrderDetail = () => {
               >
                 Update Details (Approved)
               </Button>
-            ) : !order.deliveryMethod || !order.paymentMethod ? (
-              // No details set yet - keep existing button
+            ) : order.stage === "Completed" &&
+              (!order.deliveryMethod || !order.paymentMethod) ? (
+              // No details set yet - keep existing button (only for completed orders)
               <Button
                 variant="primary"
                 size="small"
@@ -1084,8 +1109,8 @@ const OrderDetail = () => {
               >
                 Set Collection & Payment Details
               </Button>
-            ) : (
-              // Details are set but not confirmed - keep existing buttons
+            ) : order.stage === "Completed" ? (
+              // Details are set but not confirmed - keep existing buttons (only for completed orders)
               <>
                 <Button
                   variant="primary"
@@ -1102,7 +1127,7 @@ const OrderDetail = () => {
                   Edit Details
                 </Button>
               </>
-            )}
+            ) : null}
           </div>
         </div>
       </div>
@@ -1214,6 +1239,10 @@ const OrderDetail = () => {
     if (
       user.role !== "admin" ||
       !order.updateRequest ||
+      !order.updateRequest.status ||
+      !order.updateRequest.requestedBy ||
+      !order.updateRequest.requestedAt ||
+      order.stage !== "Completed" ||
       order.updateRequest.status !== "pending"
     ) {
       return null;
