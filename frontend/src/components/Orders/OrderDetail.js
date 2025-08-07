@@ -1001,8 +1001,8 @@ const OrderDetail = () => {
                       {order.price ? (
                         <>
                           Please bring exactly{" "}
-                          <strong>${order.price.toFixed(2)}</strong> as there
-                          might not be enough cash available for change.
+                          <strong>${order.price.toFixed(2)}</strong>, or as
+                          close as possible, as we only carry coins for change.
                           {isInternationalDelivery && (
                             <span className="block mt-1 font-medium text-orange-700">
                               Note: International shipping charges are not
@@ -1012,7 +1012,7 @@ const OrderDetail = () => {
                           )}
                         </>
                       ) : (
-                        "Please bring the exact amount as there might not be enough cash available for change."
+                        "Please bring the exact amount, or as close as possible, as we only carry coins for change."
                       )}
                     </p>
                   </div>
