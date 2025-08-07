@@ -26,6 +26,7 @@ import Modal from "../UI/Modal";
 import PickupDetails from "./PickupDetails";
 import axios from "axios";
 import CompletionModal from "./CompletionModal";
+import UpdateRequestModal from "./UpdateRequestModal"; // Add this line
 import { validatePostcode } from "../../utils/countryHelpers";
 
 const OrderDetail = () => {
@@ -89,6 +90,16 @@ const OrderDetail = () => {
       unit: MEASUREMENT_UNITS.CM,
     },
     additionalComments: "",
+  });
+  const [updateRequestModal, setUpdateRequestModal] = useState({
+    isOpen: false,
+    reason: "",
+    requestedChanges: {
+      deliveryMethod: "",
+      paymentMethod: "",
+      pickupSchedule: null,
+      deliveryAddress: null,
+    },
   });
 
   useEffect(() => {
@@ -1023,19 +1034,68 @@ const OrderDetail = () => {
         )}
 
         {/* Action button for bakers to update details */}
-        {user.role === "baker" && order.bakerId === user.bakerId && (
-          <div className="mt-4">
-            <Button
-              variant="primary"
-              size="small"
-              onClick={handleOpenCompletionModal}
-            >
-              {order.deliveryMethod && order.paymentMethod
-                ? "Update Details"
-                : "Set Collection & Payment Details"}
-            </Button>
-          </div>
-        )}
+        {user.role === "baker" &&
+          order.bakerId === user.bakerId &&
+          order.stage === "Completed" && (
+            <div className="mt-4">
+              {/* Show different UI based on update request status */}
+              {order.updateRequest?.status === "pending" ? (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                  <div className="flex items-center">
+                    <span className="text-yellow-500 text-lg mr-2">⏳</span>
+                    <div>
+                      <h4 className="text-sm font-medium text-yellow-800">
+                        Update Request Pending
+                      </h4>
+                      <p className="text-sm text-yellow-700 mt-1">
+                        Your request to update collection and payment details is
+                        awaiting admin approval.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : order.updateRequest?.status === "rejected" ? (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+                  <div className="flex items-center">
+                    <span className="text-red-500 text-lg mr-2">❌</span>
+                    <div>
+                      <h4 className="text-sm font-medium text-red-800">
+                        Update Request Rejected
+                      </h4>
+                      <p className="text-sm text-red-700 mt-1">
+                        {order.updateRequest.adminResponse ||
+                          "Your update request was not approved."}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : order.updateRequest?.status === "approved" ? (
+                <Button
+                  variant="primary"
+                  size="small"
+                  onClick={handleOpenCompletionModal}
+                >
+                  Update Collection & Payment Details
+                </Button>
+              ) : !order.deliveryMethod || !order.paymentMethod ? (
+                <Button
+                  variant="primary"
+                  size="small"
+                  onClick={handleOpenCompletionModal}
+                >
+                  Set Collection & Payment Details
+                </Button>
+              ) : (
+                <Button
+                  variant="secondary"
+                  size="small"
+                  onClick={handleOpenUpdateRequestModal}
+                >
+                  Request Collection & Payment Update
+                </Button>
+              )}
+            </div>
+          )}
       </div>
     );
   };
@@ -1067,6 +1127,50 @@ const OrderDetail = () => {
   }
 
   const nextAllowedStages = getNextAllowedStages(order.stage, user.role);
+
+  const handleOpenUpdateRequestModal = () => {
+    setUpdateRequestModal({
+      isOpen: true,
+      reason: "",
+      requestedChanges: {
+        deliveryMethod: order.deliveryMethod || "",
+        paymentMethod: order.paymentMethod || "",
+        pickupSchedule: order.pickupSchedule || null,
+        deliveryAddress: order.deliveryAddress || null,
+      },
+    });
+  };
+
+  const handleUpdateRequest = async () => {
+    try {
+      setActionLoading(true);
+
+      await axios.post(`/orders/${id}/request-completion-update`, {
+        requestedChanges: updateRequestModal.requestedChanges,
+        reason: updateRequestModal.reason,
+      });
+
+      showSuccess("Update request sent to admin successfully");
+      loadOrder(); // Reload to show pending status
+      setUpdateRequestModal({
+        isOpen: false,
+        reason: "",
+        requestedChanges: {
+          deliveryMethod: "",
+          paymentMethod: "",
+          pickupSchedule: null,
+          deliveryAddress: null,
+        },
+      });
+    } catch (error) {
+      console.error("Error sending update request:", error);
+      showError(
+        error.response?.data?.message || "Failed to send update request"
+      );
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
@@ -1797,6 +1901,28 @@ const OrderDetail = () => {
         loading={actionLoading}
         completionData={completionModal}
         setCompletionData={setCompletionModal}
+        order={order}
+      />
+
+      {/* Update Request Modal */}
+      <UpdateRequestModal
+        isOpen={updateRequestModal.isOpen}
+        onClose={() =>
+          setUpdateRequestModal({
+            isOpen: false,
+            reason: "",
+            requestedChanges: {
+              deliveryMethod: "",
+              paymentMethod: "",
+              pickupSchedule: null,
+              deliveryAddress: null,
+            },
+          })
+        }
+        onSubmit={handleUpdateRequest}
+        loading={actionLoading}
+        updateRequestData={updateRequestModal}
+        setUpdateRequestData={setUpdateRequestModal}
         order={order}
       />
 

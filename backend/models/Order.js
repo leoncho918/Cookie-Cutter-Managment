@@ -93,6 +93,37 @@ const orderSchema = new mongoose.Schema({
     type: String,
     enum: ["Cash", "Card"],
   },
+  // Add after the existing completion-related fields
+  updateRequest: {
+    requestedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    requestedAt: Date,
+    requestedChanges: {
+      deliveryMethod: String,
+      paymentMethod: String,
+      pickupSchedule: {
+        date: String,
+        time: String,
+        notes: String,
+      },
+      deliveryAddress: {
+        street: String,
+        suburb: String,
+        state: String,
+        postcode: String,
+        country: String,
+        instructions: String,
+      },
+    },
+    reason: String,
+    status: {
+      type: String,
+      enum: ["pending", "approved", "rejected"],
+      default: "pending",
+    },
+    adminResponse: String,
+    respondedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    respondedAt: Date,
+  },
   // Pickup scheduling for when deliveryMethod is "Pickup"
   pickupSchedule: {
     date: {

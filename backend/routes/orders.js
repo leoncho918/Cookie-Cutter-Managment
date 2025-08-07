@@ -41,6 +41,7 @@ router.get("/", requireBakerOrAdmin, async (req, res) => {
       pickupStatus,
       pickupDateFrom,
       pickupDateTo,
+      pendingUpdates, // Add this line
     } = req.query;
 
     if (stage) query.stage = stage;
@@ -54,6 +55,11 @@ router.get("/", requireBakerOrAdmin, async (req, res) => {
       query.dateRequired = {};
       if (dateFrom) query.dateRequired.$gte = new Date(dateFrom);
       if (dateTo) query.dateRequired.$lte = new Date(dateTo);
+    }
+
+    // Add this new section here
+    if (pendingUpdates === "true") {
+      query["updateRequest.status"] = "pending";
     }
 
     if (deliveryMethod) query.deliveryMethod = deliveryMethod;
@@ -905,12 +911,11 @@ router.delete("/:id", requireBakerOrAdmin, async (req, res) => {
 // Update post-completion details (delivery method and payment method)
 router.put("/:id/completion", async (req, res) => {
   try {
-    if (req.user.role !== "baker") {
-      return res
-        .status(403)
-        .json({ message: "Only bakers can update completion details" });
+    if (req.user.role !== "baker" && req.user.role !== "admin") {
+      return res.status(403).json({
+        message: "Only bakers and admins can update completion details",
+      });
     }
-
     const { deliveryMethod, paymentMethod, pickupSchedule, deliveryAddress } =
       req.body;
 
@@ -928,6 +933,24 @@ router.put("/:id/completion", async (req, res) => {
       return res.status(400).json({
         message: "Can only update completion details for completed orders",
       });
+    }
+
+    if (req.user.role === "baker") {
+      // Check if baker has permission to update
+      if (order.updateRequest && order.updateRequest.status === "approved") {
+        // Baker can update because admin approved their request
+        console.log("Baker updating with approved request");
+      } else if (!order.deliveryMethod && !order.paymentMethod) {
+        // First time setting details - allow direct update
+        console.log("Baker setting initial completion details");
+      } else {
+        // Baker trying to update existing details without approval
+        return res.status(403).json({
+          message:
+            "Cannot update existing details. Please request changes through admin.",
+          requiresRequest: true,
+        });
+      }
     }
 
     // Validate delivery method
@@ -1205,6 +1228,149 @@ router.get("/stats/overview", requireAdmin, async (req, res) => {
   } catch (error) {
     console.error("Error fetching order statistics:", error);
     res.status(500).json({ message: "Server error fetching statistics" });
+  }
+});
+
+// Request completion details update (Baker only)
+router.post("/:id/request-completion-update", async (req, res) => {
+  try {
+    if (req.user.role !== "baker") {
+      return res
+        .status(403)
+        .json({ message: "Only bakers can request updates" });
+    }
+
+    const { requestedChanges, reason } = req.body;
+    const order = await Order.findById(req.params.id);
+
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    if (order.bakerId !== req.user.bakerId) {
+      return res.status(403).json({ message: "Access denied to this order" });
+    }
+
+    if (order.stage !== "Completed") {
+      return res.status(400).json({
+        message: "Can only request updates for completed orders",
+      });
+    }
+
+    // Store the update request
+    order.updateRequest = {
+      requestedBy: req.user._id,
+      requestedAt: new Date(),
+      requestedChanges,
+      reason,
+      status: "pending",
+    };
+
+    await order.save();
+
+    console.log("📋 Update request created:", {
+      orderId: order._id,
+      orderNumber: order.orderNumber,
+      requestedBy: req.user.email,
+      reason: reason,
+    });
+
+    // Send email notification to admin
+    await sendUpdateRequestNotification(
+      order.bakerEmail,
+      order.orderNumber,
+      reason
+    );
+
+    // Emit real-time update
+    const io = req.app.get("io");
+    if (io) {
+      emitOrderUpdate(
+        io,
+        order._id,
+        order,
+        "update_requested",
+        req.user._id,
+        req.user.email
+      );
+    }
+
+    res.json({
+      message: "Update request sent to admin successfully",
+      order,
+    });
+  } catch (error) {
+    console.error("Error creating update request:", error);
+    res.status(500).json({ message: "Server error creating update request" });
+  }
+});
+
+// Admin approve/reject update request
+router.put("/:id/update-request/:action", requireAdmin, async (req, res) => {
+  try {
+    const { action } = req.params; // 'approve' or 'reject'
+    const { adminResponse } = req.body;
+    const order = await Order.findById(req.params.id);
+
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    if (!order.updateRequest || order.updateRequest.status !== "pending") {
+      return res
+        .status(400)
+        .json({ message: "No pending update request found" });
+    }
+
+    if (!["approve", "reject"].includes(action)) {
+      return res.status(400).json({ message: "Invalid action" });
+    }
+
+    // Update the request status
+    order.updateRequest.status = action === "approve" ? "approved" : "rejected";
+    order.updateRequest.adminResponse = adminResponse || "";
+    order.updateRequest.respondedBy = req.user._id;
+    order.updateRequest.respondedAt = new Date();
+
+    await order.save();
+
+    console.log("📋 Update request responded:", {
+      orderId: order._id,
+      orderNumber: order.orderNumber,
+      action: action,
+      respondedBy: req.user.email,
+    });
+
+    // Send email notification to baker
+    await sendUpdateRequestResponseEmail(
+      order.bakerEmail,
+      order.orderNumber,
+      action,
+      adminResponse
+    );
+
+    // Emit real-time update
+    const io = req.app.get("io");
+    if (io) {
+      emitOrderUpdate(
+        io,
+        order._id,
+        order,
+        `update_request_${action}d`,
+        req.user._id,
+        req.user.email
+      );
+    }
+
+    res.json({
+      message: `Update request ${action}d successfully`,
+      order,
+    });
+  } catch (error) {
+    console.error("Error responding to update request:", error);
+    res
+      .status(500)
+      .json({ message: "Server error responding to update request" });
   }
 });
 

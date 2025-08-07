@@ -19,6 +19,7 @@ import OrderDetail from "./components/Orders/OrderDetail";
 import CreateOrder from "./components/Orders/CreateOrder";
 import UserManagement from "./components/Admin/UserManagement";
 import AdminSettings from "./components/Admin/AdminSettings"; // NEW: Settings component
+import UpdateRequests from "./components/Admin/UpdateRequests"; // Add this line
 import ProfileManagement from "./components/Profile/ProfileManagement";
 import LoadingSpinner from "./components/UI/LoadingSpinner";
 import Toast from "./components/UI/Toast";
@@ -230,6 +231,18 @@ const AppContent = () => {
             <ProtectedRoute adminOnly={true}>
               <AppLayout>
                 <AdminSettings />
+              </AppLayout>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* NEW: Update Requests Route - Add this section */}
+        <Route
+          path="/admin/update-requests"
+          element={
+            <ProtectedRoute adminOnly={true}>
+              <AppLayout>
+                <UpdateRequests />
               </AppLayout>
             </ProtectedRoute>
           }

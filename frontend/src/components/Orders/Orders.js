@@ -193,6 +193,13 @@ const Orders = () => {
         params.append("pickupDateFrom", filters.pickupDateFrom);
       if (filters.pickupDateTo)
         params.append("pickupDateTo", filters.pickupDateTo);
+      // In the loadOrders function, modify the params building section
+      if (filters.stage === "pending_updates") {
+        // Don't include the regular stage filter, we'll handle this on backend
+        params.pendingUpdates = true;
+      } else if (filters.stage) {
+        params.stage = filters.stage;
+      }
 
       const response = await axios.get(
         `/orders${params.toString() ? `?${params.toString()}` : ""}`
@@ -1083,6 +1090,11 @@ const Orders = () => {
               className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">All Stages</option>
+              {user.role === "admin" && (
+                <option value="pending_updates">
+                  Orders with Pending Update Requests
+                </option>
+              )}
               {Object.values(ORDER_STAGES).map((stage) => (
                 <option key={stage} value={stage}>
                   {stage}

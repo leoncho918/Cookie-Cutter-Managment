@@ -149,9 +149,99 @@ const sendOrderStageChangeEmail = async (
   }
 };
 
+const sendUpdateRequestNotification = async (
+  bakerEmail,
+  orderNumber,
+  reason
+) => {
+  const transporter = createTransporter();
+
+  const mailOptions = {
+    from: process.env.EMAIL_USER,
+    to: process.env.ADMIN_EMAIL, // You'll need to add this env variable
+    subject: `Update Request - Order ${orderNumber}`,
+    html: `
+      <h2>Collection & Payment Update Request</h2>
+      <p><strong>Order Number:</strong> ${orderNumber}</p>
+      <p><strong>Requested by:</strong> ${bakerEmail}</p>
+      <p><strong>Reason:</strong> ${reason}</p>
+      <p>A baker has requested to update their collection and payment details for a completed order.</p>
+      <p>Please log in to the admin panel to review and approve/reject this request.</p>
+      <br>
+      <p>Best regards,<br>System</p>
+    `,
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    console.log("Update request notification sent to admin");
+    return true;
+  } catch (error) {
+    console.error("Error sending update request notification:", error);
+    return false;
+  }
+};
+
+// Send update request response to baker
+const sendUpdateRequestResponseEmail = async (
+  bakerEmail,
+  orderNumber,
+  action,
+  adminResponse
+) => {
+  const transporter = createTransporter();
+
+  const actionMessages = {
+    approve:
+      "Your request to update collection and payment details has been approved.",
+    reject:
+      "Your request to update collection and payment details has been rejected.",
+  };
+
+  const mailOptions = {
+    from: process.env.EMAIL_USER,
+    to: bakerEmail,
+    subject: `Update Request ${
+      action === "approve" ? "Approved" : "Rejected"
+    } - Order ${orderNumber}`,
+    html: `
+      <h2>Update Request Response</h2>
+      <p><strong>Order Number:</strong> ${orderNumber}</p>
+      <p><strong>Status:</strong> ${
+        action === "approve" ? "Approved" : "Rejected"
+      }</p>
+      <p>${actionMessages[action]}</p>
+      ${
+        adminResponse
+          ? `<p><strong>Admin Notes:</strong> ${adminResponse}</p>`
+          : ""
+      }
+      ${
+        action === "approve"
+          ? "<p>You can now update your collection and payment details in the order page.</p>"
+          : ""
+      }
+      <p>Please log in to the system to view your order details.</p>
+      <br>
+      <p>Best regards,<br>Leon</p>
+    `,
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    console.log(`Update request ${action} email sent to:`, bakerEmail);
+    return true;
+  } catch (error) {
+    console.error(`Error sending update request ${action} email:`, error);
+    return false;
+  }
+};
+
 module.exports = {
   generateRandomPassword,
   sendAccountCreationEmail,
   sendPasswordResetEmail,
   sendOrderStageChangeEmail,
+  sendUpdateRequestNotification,
+  sendUpdateRequestResponseEmail,
 };
