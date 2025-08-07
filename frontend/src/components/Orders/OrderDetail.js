@@ -996,13 +996,22 @@ const OrderDetail = () => {
         {/* CRITICAL FIX: Action Buttons Section */}
         <div className="mt-4 flex justify-between items-center">
           {order.detailsConfirmed ? (
-            // Details are confirmed - show status
-            <div className="text-green-600 text-sm flex items-center">
-              <span className="text-green-500 mr-2">✅</span>
-              Details confirmed on{" "}
-              {new Date(order.detailsConfirmedAt).toLocaleDateString("en-AU")}
-              <div className="ml-4 text-xs text-gray-500">
-                <p>📧 Contact admin if you need to update these details</p>
+            // Details are confirmed - show status with update request button
+            <div className="text-green-600 text-sm">
+              <div className="flex items-center">
+                <span className="text-green-500 mr-2">✅</span>
+                Details confirmed on{" "}
+                {new Date(order.detailsConfirmedAt).toLocaleDateString("en-AU")}
+              </div>
+              <div className="mt-2">
+                <Button
+                  variant="outline"
+                  size="small"
+                  onClick={handleOpenUpdateRequestModal}
+                  className="text-xs"
+                >
+                  📧 Request to Update Details
+                </Button>
               </div>
             </div>
           ) : (
