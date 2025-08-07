@@ -1,4 +1,4 @@
-// frontend/src/App.js - Complete App component with all routing
+// frontend/src/App.js - Updated App component with settings route
 import React, { useState } from "react";
 import {
   BrowserRouter as Router,
@@ -18,6 +18,7 @@ import Orders from "./components/Orders/Orders";
 import OrderDetail from "./components/Orders/OrderDetail";
 import CreateOrder from "./components/Orders/CreateOrder";
 import UserManagement from "./components/Admin/UserManagement";
+import AdminSettings from "./components/Admin/AdminSettings"; // NEW: Settings component
 import ProfileManagement from "./components/Profile/ProfileManagement";
 import LoadingSpinner from "./components/UI/LoadingSpinner";
 import Toast from "./components/UI/Toast";
@@ -217,6 +218,18 @@ const AppContent = () => {
             <ProtectedRoute adminOnly={true}>
               <AppLayout>
                 <UserManagement />
+              </AppLayout>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* NEW: Admin Settings Route */}
+        <Route
+          path="/admin/settings"
+          element={
+            <ProtectedRoute adminOnly={true}>
+              <AppLayout>
+                <AdminSettings />
               </AppLayout>
             </ProtectedRoute>
           }

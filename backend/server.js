@@ -1,4 +1,4 @@
-// backend/server.js - Complete server with all routes including pickup
+// backend/server.js - Complete server with all routes including settings
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
@@ -12,6 +12,7 @@ const userRoutes = require("./routes/users");
 const orderRoutes = require("./routes/orders");
 const uploadRoutes = require("./routes/upload");
 const pickupRoutes = require("./routes/pickup");
+const settingsRoutes = require("./routes/settings"); // NEW: Settings routes
 
 // Middleware imports
 const {
@@ -71,8 +72,28 @@ mongoose
       useUnifiedTopology: true,
     }
   )
-  .then(() => console.log("✅ MongoDB connected"))
+  .then(() => {
+    console.log("✅ MongoDB connected");
+
+    // Initialize default settings on startup
+    initializeDefaultSettings();
+  })
   .catch((err) => console.log("❌ MongoDB connection error:", err));
+
+// Initialize default system settings
+const initializeDefaultSettings = async () => {
+  try {
+    const Settings = require("./models/Settings");
+    const settings = await Settings.getSettings();
+    console.log("✅ System settings initialized:", {
+      internationalEnabled: settings.internationalAddresses.enabled,
+      supportedCountries:
+        settings.internationalAddresses.supportedCountries.length,
+    });
+  } catch (error) {
+    console.error("❌ Error initializing settings:", error);
+  }
+};
 
 // Socket.IO authentication and connection handling
 io.use(authenticateSocket);
@@ -228,6 +249,14 @@ app.use("/api/orders", authenticateToken, requirePasswordChange, orderRoutes);
 app.use("/api/upload", authenticateToken, requirePasswordChange, uploadRoutes);
 app.use("/api/pickup", authenticateToken, requirePasswordChange, pickupRoutes);
 
+// NEW: Settings routes with password change middleware
+app.use(
+  "/api/settings",
+  authenticateToken,
+  requirePasswordChange,
+  settingsRoutes
+);
+
 // Health check endpoint
 app.get("/api/health", (req, res) => {
   res.json({
@@ -244,6 +273,8 @@ app.get("/api/health", (req, res) => {
       realtime: "✅ Socket.IO",
       pickup: "✅ Pickup scheduling",
       email: "✅ Email notifications",
+      settings: "✅ System settings", // NEW
+      international: "✅ International delivery toggle", // NEW
     },
   });
 });
@@ -315,37 +346,60 @@ app.get("/api/test-socket", authenticateToken, (req, res) => {
   });
 });
 
-// System status endpoint
-app.get("/api/status", authenticateToken, (req, res) => {
-  res.json({
-    system: "Cookie Cutter Order Management System",
-    version: "1.0.0",
-    status: "operational",
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    environment: process.env.NODE_ENV || "development",
-    database:
-      mongoose.connection.readyState === 1 ? "connected" : "disconnected",
-    realtime: {
-      socketio: "active",
-      connectedUsers: connectedUsers.size,
-      rooms: Array.from(io.sockets.adapter.rooms.keys()).length,
-    },
-    features: {
-      authentication: "✅ JWT-based auth",
-      userManagement: "✅ Admin manages bakers",
-      orderManagement: "✅ Full order lifecycle",
-      imageUpload: "✅ S3 integration",
-      emailNotifications: "✅ Nodemailer",
-      pickupScheduling: "✅ Date/time booking",
-      realtimeUpdates: "✅ Socket.IO",
-    },
-    pickup: {
-      address: "40A Brancourt Ave, Bankstown NSW 2200",
-      businessHours: "Mon-Fri 9AM-5PM, Sat 10AM-2PM",
-      scheduling: "Available",
-    },
-  });
+// Enhanced system status endpoint with settings info
+app.get("/api/status", authenticateToken, async (req, res) => {
+  try {
+    // Get current settings status
+    const Settings = require("./models/Settings");
+    const settings = await Settings.getSettings();
+
+    res.json({
+      system: "Cookie Cutter Order Management System",
+      version: "1.0.0",
+      status: "operational",
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      environment: process.env.NODE_ENV || "development",
+      database:
+        mongoose.connection.readyState === 1 ? "connected" : "disconnected",
+      realtime: {
+        socketio: "active",
+        connectedUsers: connectedUsers.size,
+        rooms: Array.from(io.sockets.adapter.rooms.keys()).length,
+      },
+      features: {
+        authentication: "✅ JWT-based auth",
+        userManagement: "✅ Admin manages bakers",
+        orderManagement: "✅ Full order lifecycle",
+        imageUpload: "✅ S3 integration",
+        emailNotifications: "✅ Nodemailer",
+        pickupScheduling: "✅ Date/time booking",
+        realtimeUpdates: "✅ Socket.IO",
+        systemSettings: "✅ Admin configurable", // NEW
+        internationalDelivery: settings.internationalAddresses.enabled
+          ? "✅ Enabled"
+          : "❌ Disabled", // NEW
+      },
+      pickup: {
+        address: "40A Brancourt Ave, Bankstown NSW 2200",
+        businessHours: "Mon-Sun 9AM-11:59PM",
+        scheduling: "Available",
+      },
+      settings: {
+        internationalDelivery: settings.internationalAddresses.enabled,
+        supportedCountries:
+          settings.internationalAddresses.supportedCountries.length,
+        lastModified: settings.internationalAddresses.lastModifiedAt,
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error getting system status:", error);
+    res.status(500).json({
+      system: "Cookie Cutter Order Management System",
+      status: "error",
+      message: "Error retrieving system status",
+    });
+  }
 });
 
 // Error handling middleware
@@ -419,6 +473,8 @@ server.listen(PORT, () => {
   console.log("✅ Image upload to S3 configured");
   console.log("✅ Email notifications ready");
   console.log("✅ Pickup scheduling available");
+  console.log("✅ System settings configurable"); // NEW
+  console.log("✅ International delivery toggle available"); // NEW
   console.log("🍪 ================================================");
 });
 

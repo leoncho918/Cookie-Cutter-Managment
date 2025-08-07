@@ -1,17 +1,34 @@
-// Enhanced completion modal component with delivery address and payment notifications
+// Enhanced completion modal component with international address toggle integration
 // This replaces the completion modal in OrderDetail.js
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Button from "../UI/Button";
 import Modal from "../UI/Modal";
 import PickupDetails from "./PickupDetails";
 import {
-  COUNTRIES,
   getStateLabel,
   getPostcodeLabel,
   getSuburbLabel,
   validatePostcode,
 } from "../../utils/countryHelpers";
+import axios from "axios";
+
+// Filtered countries list based on admin settings
+const getAvailableCountries = (internationalEnabled, supportedCountries) => {
+  if (!internationalEnabled) {
+    // Only Australia when international is disabled
+    return [{ code: "AU", name: "Australia", default: true }];
+  }
+
+  // Use supported countries from settings when international is enabled
+  return (
+    supportedCountries?.map((countryName) => ({
+      code: countryName.substring(0, 2).toUpperCase(),
+      name: countryName,
+      default: countryName === "Australia",
+    })) || [{ code: "AU", name: "Australia", default: true }]
+  );
+};
 
 const CompletionModal = ({
   isOpen,
@@ -23,6 +40,38 @@ const CompletionModal = ({
   order,
 }) => {
   const [showPickupDetails, setShowPickupDetails] = useState(false);
+  const [systemSettings, setSystemSettings] = useState(null);
+  const [settingsLoading, setSettingsLoading] = useState(false);
+
+  // Load system settings when modal opens
+  useEffect(() => {
+    if (isOpen && !systemSettings) {
+      loadSystemSettings();
+    }
+  }, [isOpen, systemSettings]);
+
+  const loadSystemSettings = async () => {
+    try {
+      setSettingsLoading(true);
+      const response = await axios.get("/settings");
+      console.log(
+        "📋 System settings loaded for completion modal:",
+        response.data.data
+      );
+      setSystemSettings(response.data.data);
+    } catch (error) {
+      console.error("❌ Error loading system settings:", error);
+      // Fall back to default settings
+      setSystemSettings({
+        internationalAddresses: {
+          enabled: false,
+          supportedCountries: ["Australia"],
+        },
+      });
+    } finally {
+      setSettingsLoading(false);
+    }
+  };
 
   const handleDeliveryMethodChange = (method) => {
     setCompletionData((prev) => ({
@@ -144,6 +193,18 @@ const CompletionModal = ({
     );
   }
 
+  // Get available countries based on settings
+  const availableCountries = systemSettings
+    ? getAvailableCountries(
+        systemSettings.internationalAddresses.enabled,
+        systemSettings.internationalAddresses.supportedCountries
+      )
+    : [{ code: "AU", name: "Australia", default: true }];
+
+  // Check if international delivery is available
+  const isInternationalEnabled =
+    systemSettings?.internationalAddresses?.enabled || false;
+
   return (
     <Modal
       isOpen={isOpen}
@@ -152,6 +213,59 @@ const CompletionModal = ({
       size="large"
     >
       <div className="space-y-6">
+        {/* Settings Loading */}
+        {settingsLoading && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+            <div className="flex items-center">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-3"></div>
+              <span className="text-blue-700 text-sm">
+                Loading system settings...
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* International Status Indicator */}
+        {systemSettings && (
+          <div
+            className={`p-3 rounded-md border ${
+              isInternationalEnabled
+                ? "bg-green-50 border-green-200"
+                : "bg-blue-50 border-blue-200"
+            }`}
+          >
+            <div className="flex items-center">
+              <span
+                className={`text-lg mr-2 ${
+                  isInternationalEnabled ? "text-green-600" : "text-blue-600"
+                }`}
+              >
+                {isInternationalEnabled ? "🌍" : "🇦🇺"}
+              </span>
+              <div>
+                <p
+                  className={`text-sm font-medium ${
+                    isInternationalEnabled ? "text-green-800" : "text-blue-800"
+                  }`}
+                >
+                  {isInternationalEnabled
+                    ? "International delivery available"
+                    : "Delivery limited to Australia only"}
+                </p>
+                <p
+                  className={`text-xs mt-1 ${
+                    isInternationalEnabled ? "text-green-700" : "text-blue-700"
+                  }`}
+                >
+                  {isInternationalEnabled
+                    ? `${availableCountries.length} countries supported`
+                    : "International delivery is currently disabled by admin"}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Success Message */}
         <div className="text-center bg-green-50 border border-green-200 rounded-lg p-4">
           <div className="mx-auto h-12 w-12 flex items-center justify-center rounded-full bg-green-100 mb-3">
@@ -298,6 +412,11 @@ const CompletionModal = ({
                         order total
                       </strong>
                     </div>
+                    {isInternationalEnabled && (
+                      <div className="mt-1 text-green-600 font-medium">
+                        🌍 International delivery available
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -326,12 +445,20 @@ const CompletionModal = ({
                   required
                   className="w-full border border-green-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
                 >
-                  {COUNTRIES.map((country) => (
+                  {availableCountries.map((country) => (
                     <option key={country.code} value={country.name}>
                       {country.name}
+                      {!isInternationalEnabled &&
+                        country.name === "Australia" &&
+                        " (Only option available)"}
                     </option>
                   ))}
                 </select>
+                {!isInternationalEnabled && (
+                  <p className="text-xs text-blue-600 mt-1">
+                    International delivery is currently disabled by admin
+                  </p>
+                )}
               </div>
 
               <div className="md:col-span-2">
@@ -767,6 +894,13 @@ const CompletionModal = ({
                       {completionData.deliveryAddress.postcode}
                       <br />
                       {completionData.deliveryAddress.country}
+                      {/* Show international indicator */}
+                      {completionData.deliveryAddress.country !==
+                        "Australia" && (
+                        <span className="ml-2 text-blue-600 font-medium">
+                          🌍 International
+                        </span>
+                      )}
                       {completionData.deliveryAddress.instructions && (
                         <div className="mt-1">
                           <strong>Instructions:</strong>{" "}
@@ -783,6 +917,19 @@ const CompletionModal = ({
                   <span>${order.price.toFixed(2)}</span>
                 </div>
               )}
+
+              {/* International shipping notice */}
+              {completionData.deliveryMethod === "Delivery" &&
+                completionData.deliveryAddress?.country &&
+                completionData.deliveryAddress.country !== "Australia" && (
+                  <div className="pt-2 border-t border-gray-300">
+                    <div className="text-xs text-orange-600 bg-orange-50 p-2 rounded">
+                      <strong>International Shipping:</strong> Additional
+                      shipping charges and customs duties may apply for delivery
+                      to {completionData.deliveryAddress.country}.
+                    </div>
+                  </div>
+                )}
             </div>
           </div>
         )}
@@ -796,7 +943,7 @@ const CompletionModal = ({
             variant="primary"
             onClick={onSubmit}
             loading={loading}
-            disabled={loading || !validateForm()}
+            disabled={loading || !validateForm() || settingsLoading}
           >
             {loading ? "Confirming..." : "Confirm Details"}
           </Button>

@@ -1,4 +1,4 @@
-// src/components/Layout/Sidebar.js - Side navigation menu
+// src/components/Layout/Sidebar.js - Updated side navigation menu with settings
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
@@ -15,6 +15,12 @@ const Sidebar = ({ isOpen, onClose }) => {
       name: "User Management",
       href: "/admin/users",
       icon: "👥",
+      adminOnly: true,
+    },
+    {
+      name: "System Settings", // NEW: Settings menu item
+      href: "/admin/settings",
+      icon: "⚙️",
       adminOnly: true,
     },
     { name: "Change Password", href: "/change-password", icon: "🔒" },
@@ -86,9 +92,34 @@ const Sidebar = ({ isOpen, onClose }) => {
               >
                 <span className="mr-3 text-lg">{item.icon}</span>
                 {item.name}
+                {/* NEW: Show badge for settings if user is admin */}
+                {item.href === "/admin/settings" && user?.role === "admin" && (
+                  <span className="ml-auto inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                    Admin
+                  </span>
+                )}
               </Link>
             ))}
           </div>
+
+          {/* NEW: Settings section separator for admin */}
+          {user?.role === "admin" && (
+            <div className="mt-8 pt-6 border-t border-gray-200">
+              <div className="px-3 mb-2">
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  Administration
+                </span>
+              </div>
+              <div className="space-y-1">
+                <div className="text-xs text-gray-500 px-3 py-1">
+                  🌍 International delivery settings
+                </div>
+                <div className="text-xs text-gray-500 px-3 py-1">
+                  ⚙️ System configuration
+                </div>
+              </div>
+            </div>
+          )}
         </nav>
       </div>
     </>
