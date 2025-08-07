@@ -93,34 +93,6 @@ const Orders = () => {
       // Refresh the orders list
       loadOrders();
     });
-
-    const validatePickupSchedule = (pickupSchedule) => {
-      if (!pickupSchedule)
-        return { valid: false, reason: "No pickup schedule" };
-
-      if (!pickupSchedule.date || !pickupSchedule.time) {
-        return { valid: false, reason: "Missing date or time" };
-      }
-
-      try {
-        const pickupDate = new Date(pickupSchedule.date);
-        if (isNaN(pickupDate.getTime())) {
-          return { valid: false, reason: "Invalid date format" };
-        }
-
-        const pickupDateTime = new Date(
-          `${pickupSchedule.date}T${pickupSchedule.time}`
-        );
-        if (isNaN(pickupDateTime.getTime())) {
-          return { valid: false, reason: "Invalid time format" };
-        }
-
-        return { valid: true };
-      } catch (error) {
-        return { valid: false, reason: error.message };
-      }
-    };
-
     // Listen for specific order list events
     const handleOrderListUpdate = (data) => {
       console.log("📋 Order list update received:", data);
@@ -198,34 +170,39 @@ const Orders = () => {
   const loadOrders = async () => {
     try {
       setLoading(true);
+      console.log("🔄 Loading orders with filters:", filters);
+
+      // Build query parameters
       const params = new URLSearchParams();
 
-      // Add all filters except pickup-specific filters to server request
-      Object.entries(filters).forEach(([key, value]) => {
-        if (value && !key.startsWith("pickup")) {
-          params.append(key, value);
-        }
-      });
+      // Add basic filters
+      if (filters.stage) params.append("stage", filters.stage);
+      if (filters.bakerId) params.append("bakerId", filters.bakerId);
+      if (filters.bakerEmail) params.append("bakerEmail", filters.bakerEmail);
+      if (filters.dateFrom) params.append("dateFrom", filters.dateFrom);
+      if (filters.dateTo) params.append("dateTo", filters.dateTo);
+      if (filters.deliveryMethod)
+        params.append("deliveryMethod", filters.deliveryMethod);
+      if (filters.paymentMethod)
+        params.append("paymentMethod", filters.paymentMethod);
 
-      console.log("🔄 Loading orders with filters:", filters);
-      const response = await axios.get(`/orders?${params.toString()}`);
+      // Add pickup-specific filters
+      if (filters.pickupStatus)
+        params.append("pickupStatus", filters.pickupStatus);
+      if (filters.pickupDateFrom)
+        params.append("pickupDateFrom", filters.pickupDateFrom);
+      if (filters.pickupDateTo)
+        params.append("pickupDateTo", filters.pickupDateTo);
 
-      let ordersData = response.data;
+      const response = await axios.get(
+        `/orders${params.toString() ? `?${params.toString()}` : ""}`
+      );
 
-      // Apply client-side pickup filters if needed
-      if (
-        filters.pickupStatus ||
-        filters.pickupDateFrom ||
-        filters.pickupDateTo
-      ) {
-        ordersData = filterOrdersByPickupCriteria(ordersData, filters);
-      }
-
-      console.log("✅ Orders loaded and filtered:", ordersData.length);
-      setOrders(ordersData);
+      console.log("📦 Loaded orders:", response.data.length, "orders");
+      setOrders(response.data);
     } catch (error) {
-      console.error("❌ Error loading orders:", error);
-      showError("Failed to load orders");
+      console.error("Error loading orders:", error);
+      showError(error.response?.data?.message || "Failed to load orders");
     } finally {
       setLoading(false);
     }
@@ -251,10 +228,16 @@ const Orders = () => {
 
   // Helper function to check if a quick filter is currently active
   const isQuickFilterActive = (filterType, value) => {
+    // Define date variables consistently
+    const now = new Date();
     const today = new Date().toISOString().split("T")[0];
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
     const yesterdayStr = yesterday.toISOString().split("T")[0];
+
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = tomorrow.toISOString().split("T")[0];
 
     switch (filterType) {
       case "pickup-orders":
@@ -267,13 +250,12 @@ const Orders = () => {
         );
 
       case "pickup-today":
-        const todayForCheck = new Date().toISOString().split("T")[0];
         return (
           filters.stage === "Completed" &&
           filters.deliveryMethod === "Pickup" &&
           filters.pickupStatus === "today" &&
-          filters.pickupDateFrom === todayForCheck &&
-          filters.pickupDateTo === todayForCheck
+          filters.pickupDateFrom === today &&
+          filters.pickupDateTo === today
         );
 
       case "pickup-overdue":
@@ -285,35 +267,57 @@ const Orders = () => {
         );
 
       case "pickup-tomorrow":
-        const tomorrowForCheck = new Date();
-        tomorrowForCheck.setDate(tomorrowForCheck.getDate() + 1);
-        const tomorrowStrForCheck = tomorrowForCheck
-          .toISOString()
-          .split("T")[0];
-
         return (
           filters.stage === "Completed" &&
           filters.deliveryMethod === "Pickup" &&
           filters.pickupStatus === "tomorrow" &&
-          filters.pickupDateFrom === tomorrowStrForCheck &&
-          filters.pickupDateTo === tomorrowStrForCheck
+          filters.pickupDateFrom === tomorrowStr &&
+          filters.pickupDateTo === tomorrowStr
+        );
+
+      case "pickup-this-week":
+        // Calculate start and end of current week
+        const startOfWeek = new Date(now);
+        startOfWeek.setDate(now.getDate() - now.getDay());
+        const endOfWeek = new Date(startOfWeek);
+        endOfWeek.setDate(startOfWeek.getDate() + 6);
+
+        const startOfWeekStr = startOfWeek.toISOString().split("T")[0];
+        const endOfWeekStr = endOfWeek.toISOString().split("T")[0];
+
+        return (
+          filters.stage === "Completed" &&
+          filters.deliveryMethod === "Pickup" &&
+          filters.pickupStatus === "this-week" &&
+          filters.pickupDateFrom === startOfWeekStr &&
+          filters.pickupDateTo === endOfWeekStr
         );
 
       case "stage":
         return filters.stage === value && !filters.deliveryMethod;
 
       case "bakerEmail":
-        return filters.bakerEmail === value;
+        return filters.bakerEmail === value && !filters.pickupStatus;
 
       default:
         return filters[filterType] === value;
     }
   };
-
   // Enhanced quick filter functions that update dropdown filters too
   const applyQuickFilter = (filterType, value) => {
-    const today = new Date();
-    const todayStr = today.toISOString().split("T")[0]; // YYYY-MM-DD format
+    // Define date variables at the top to avoid scoping issues
+    const now = new Date();
+    const today = new Date().toISOString().split("T")[0];
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().split("T")[0];
+
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = tomorrow.toISOString().split("T")[0];
+
+    console.log("🔧 Applying quick filter:", filterType, value);
+    console.log("📅 Date calculations:", { today, yesterdayStr, tomorrowStr });
 
     switch (filterType) {
       case "pickup-orders":
@@ -321,6 +325,7 @@ const Orders = () => {
           ...prev,
           stage: "Completed",
           deliveryMethod: "Pickup",
+          // Clear pickup-specific filters to show ALL pickup orders
           pickupStatus: "",
           pickupDateFrom: "",
           pickupDateTo: "",
@@ -334,17 +339,14 @@ const Orders = () => {
         break;
 
       case "pickup-today":
-        const todayStr = new Date().toISOString().split("T")[0]; // YYYY-MM-DD format
-
         setFilters((prev) => ({
           ...prev,
           stage: "Completed",
           deliveryMethod: "Pickup",
           pickupStatus: "today",
-          // Set pickup date range to today only
-          pickupDateFrom: todayStr,
-          pickupDateTo: todayStr,
-          // Clear conflicting filters but keep other pickup-related ones
+          pickupDateFrom: today,
+          pickupDateTo: today,
+          // Clear conflicting filters
           paymentMethod: "",
           bakerId: "",
           bakerEmail: "",
@@ -354,20 +356,14 @@ const Orders = () => {
         break;
 
       case "pickup-overdue":
-        // For overdue pickups, we want everything from the beginning up to yesterday
-        const yesterday = new Date(today);
-        yesterday.setDate(yesterday.getDate() - 1);
-        const yesterdayStr = yesterday.toISOString().split("T")[0];
-
         setFilters((prev) => ({
           ...prev,
           stage: "Completed",
           deliveryMethod: "Pickup",
           pickupStatus: "overdue",
-          // Set pickup date range to show all dates up to yesterday
-          pickupDateFrom: "2020-01-01", // Far past date to capture all overdue
-          pickupDateTo: yesterdayStr,
-          // Clear conflicting filters but keep other pickup-related ones
+          pickupDateFrom: "", // Don't set from date for overdue
+          pickupDateTo: yesterdayStr, // Everything before today
+          // Clear conflicting filters
           paymentMethod: "",
           bakerId: "",
           bakerEmail: "",
@@ -377,16 +373,11 @@ const Orders = () => {
         break;
 
       case "pickup-tomorrow":
-        const today = new Date();
-        const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
-        const tomorrowStr = tomorrow.toISOString().split("T")[0];
-
         setFilters((prev) => ({
           ...prev,
           stage: "Completed",
           deliveryMethod: "Pickup",
           pickupStatus: "tomorrow",
-          // Set pickup date range to tomorrow only
           pickupDateFrom: tomorrowStr,
           pickupDateTo: tomorrowStr,
           // Clear conflicting filters
@@ -399,9 +390,9 @@ const Orders = () => {
         break;
 
       case "pickup-this-week":
-        // Add support for this week quick filter
-        const startOfWeek = new Date(today);
-        startOfWeek.setDate(today.getDate() - today.getDay()); // Sunday
+        // Calculate start and end of current week (Sunday to Saturday)
+        const startOfWeek = new Date(now);
+        startOfWeek.setDate(now.getDate() - now.getDay()); // Sunday
         const endOfWeek = new Date(startOfWeek);
         endOfWeek.setDate(startOfWeek.getDate() + 6); // Saturday
 
@@ -409,8 +400,7 @@ const Orders = () => {
           ...prev,
           stage: "Completed",
           deliveryMethod: "Pickup",
-          pickupStatus: "upcoming",
-          // Set pickup date range to this week
+          pickupStatus: "this-week",
           pickupDateFrom: startOfWeek.toISOString().split("T")[0],
           pickupDateTo: endOfWeek.toISOString().split("T")[0],
           // Clear conflicting filters
@@ -432,7 +422,12 @@ const Orders = () => {
           pickupStatus: "",
           pickupDateFrom: "",
           pickupDateTo: "",
-          // Keep other filters
+          // Keep other non-conflicting filters
+          paymentMethod: prev.paymentMethod,
+          bakerId: prev.bakerId,
+          bakerEmail: prev.bakerEmail,
+          dateFrom: prev.dateFrom,
+          dateTo: prev.dateTo,
         }));
         break;
 
@@ -445,16 +440,17 @@ const Orders = () => {
           pickupStatus: "",
           pickupDateFrom: "",
           pickupDateTo: "",
-          // Keep other filters but clear conflicting ones
+          // Clear conflicting baker filter
           bakerId: "",
         }));
         break;
 
       default:
-        // For other quick filters, update the specific filter and clear pickup-specific ones
+        // For other quick filters, update the specific filter
         setFilters((prev) => ({
           ...prev,
           [filterType]: value,
+          // Clear pickup-specific filters for non-pickup quick filters
           pickupStatus: "",
           pickupDateFrom: "",
           pickupDateTo: "",
