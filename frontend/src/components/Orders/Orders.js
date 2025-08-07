@@ -171,14 +171,28 @@ const Orders = () => {
       setLoading(true);
       const params = new URLSearchParams();
 
+      // Add all filters except pickupStatus to server request
       Object.entries(filters).forEach(([key, value]) => {
-        if (value) params.append(key, value);
+        if (value && key !== "pickupStatus") {
+          params.append(key, value);
+        }
       });
 
       console.log("🔄 Loading orders with filters:", filters);
       const response = await axios.get(`/orders?${params.toString()}`);
-      console.log("✅ Orders loaded:", response.data.length);
-      setOrders(response.data);
+
+      let ordersData = response.data;
+
+      // Apply client-side pickup status filtering if needed
+      if (filters.pickupStatus) {
+        ordersData = filterOrdersByPickupStatus(
+          ordersData,
+          filters.pickupStatus
+        );
+      }
+
+      console.log("✅ Orders loaded:", ordersData.length);
+      setOrders(ordersData);
     } catch (error) {
       console.error("❌ Error loading orders:", error);
       showError("Failed to load orders");
@@ -213,13 +227,7 @@ const Orders = () => {
           ...prev,
           stage: "Completed",
           deliveryMethod: "Pickup",
-        }));
-        break;
-      case "delivery-orders":
-        setFilters((prev) => ({
-          ...prev,
-          stage: "Completed",
-          deliveryMethod: "Delivery",
+          pickupStatus: "",
         }));
         break;
       case "pickup-today":
@@ -242,9 +250,42 @@ const Orders = () => {
         setFilters((prev) => ({
           ...prev,
           [filterType]: value,
+          pickupStatus: "",
         }));
         break;
     }
+  };
+
+  // Add client-side filtering function for pickup status
+  const filterOrdersByPickupStatus = (orders, pickupStatus) => {
+    if (!pickupStatus) return orders;
+
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    return orders.filter((order) => {
+      if (order.deliveryMethod !== "Pickup" || !order.pickupSchedule) {
+        return false;
+      }
+
+      if (!order.pickupSchedule.date || !order.pickupSchedule.time) {
+        return false;
+      }
+
+      const pickupDate = new Date(order.pickupSchedule.date);
+      const pickupDateTime = new Date(
+        `${order.pickupSchedule.date}T${order.pickupSchedule.time}`
+      );
+
+      switch (pickupStatus) {
+        case "today":
+          return pickupDate.getTime() === today.getTime();
+        case "overdue":
+          return pickupDateTime < now;
+        default:
+          return true;
+      }
+    });
   };
 
   const clearAllFilters = () => {
@@ -417,6 +458,17 @@ const Orders = () => {
               </button>
 
               <button
+                onClick={() => applyQuickFilter("stage", "Submitted")}
+                className={`px-3 py-1 text-xs rounded-full border transition-colors ${
+                  filters.stage === "Submitted"
+                    ? "bg-blue-100 border-blue-300 text-blue-700"
+                    : "bg-gray-100 border-gray-300 text-gray-600 hover:bg-gray-200"
+                }`}
+              >
+                📝 Submitted Orders
+              </button>
+
+              <button
                 onClick={() => applyQuickFilter("stage", "Requires Approval")}
                 className={`px-3 py-1 text-xs rounded-full border transition-colors ${
                   filters.stage === "Requires Approval"
@@ -431,7 +483,8 @@ const Orders = () => {
                 onClick={() => applyQuickFilter("pickup-orders")}
                 className={`px-3 py-1 text-xs rounded-full border transition-colors ${
                   filters.stage === "Completed" &&
-                  filters.deliveryMethod === "Pickup"
+                  filters.deliveryMethod === "Pickup" &&
+                  !filters.pickupStatus
                     ? "bg-blue-100 border-blue-300 text-blue-700"
                     : "bg-gray-100 border-gray-300 text-gray-600 hover:bg-gray-200"
                 }`}
@@ -441,14 +494,26 @@ const Orders = () => {
 
               <button
                 onClick={() => applyQuickFilter("pickup-today")}
-                className="px-3 py-1 text-xs rounded-full border bg-orange-100 border-orange-300 text-orange-700 hover:bg-orange-200 transition-colors"
+                className={`px-3 py-1 text-xs rounded-full border transition-colors ${
+                  filters.stage === "Completed" &&
+                  filters.deliveryMethod === "Pickup" &&
+                  filters.pickupStatus === "today"
+                    ? "bg-orange-100 border-orange-300 text-orange-700"
+                    : "bg-gray-100 border-gray-300 text-gray-600 hover:bg-gray-200"
+                }`}
               >
                 📅 Pickup Today
               </button>
 
               <button
                 onClick={() => applyQuickFilter("pickup-overdue")}
-                className="px-3 py-1 text-xs rounded-full border bg-red-100 border-red-300 text-red-700 hover:bg-red-200 transition-colors"
+                className={`px-3 py-1 text-xs rounded-full border transition-colors ${
+                  filters.stage === "Completed" &&
+                  filters.deliveryMethod === "Pickup" &&
+                  filters.pickupStatus === "overdue"
+                    ? "bg-red-100 border-red-300 text-red-700"
+                    : "bg-gray-100 border-gray-300 text-gray-600 hover:bg-gray-200"
+                }`}
               >
                 🚨 Overdue Pickups
               </button>
