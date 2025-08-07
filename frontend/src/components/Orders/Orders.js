@@ -1,4 +1,4 @@
-// src/components/Orders/Orders.js - Complete Orders list with enhanced pickup support
+// src/components/Orders/Orders.js - Fixed Orders list with working pickup filters and date range
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
@@ -32,9 +32,11 @@ const Orders = () => {
     bakerEmail: "",
     dateFrom: "",
     dateTo: "",
-    deliveryMethod: "", // New filter
-    paymentMethod: "", // New filter
-    pickupStatus: "", // New filter
+    deliveryMethod: "",
+    paymentMethod: "",
+    pickupStatus: "",
+    pickupDateFrom: "", // NEW: Pickup date from filter
+    pickupDateTo: "", // NEW: Pickup date to filter
   });
   const [deleteModal, setDeleteModal] = useState({
     isOpen: false,
@@ -171,9 +173,9 @@ const Orders = () => {
       setLoading(true);
       const params = new URLSearchParams();
 
-      // Add all filters except pickupStatus to server request
+      // Add all filters except pickup-specific filters to server request
       Object.entries(filters).forEach(([key, value]) => {
-        if (value && key !== "pickupStatus") {
+        if (value && !key.startsWith("pickup")) {
           params.append(key, value);
         }
       });
@@ -183,15 +185,16 @@ const Orders = () => {
 
       let ordersData = response.data;
 
-      // Apply client-side pickup status filtering if needed
-      if (filters.pickupStatus) {
-        ordersData = filterOrdersByPickupStatus(
-          ordersData,
-          filters.pickupStatus
-        );
+      // Apply client-side pickup filters if needed
+      if (
+        filters.pickupStatus ||
+        filters.pickupDateFrom ||
+        filters.pickupDateTo
+      ) {
+        ordersData = filterOrdersByPickupCriteria(ordersData, filters);
       }
 
-      console.log("✅ Orders loaded:", ordersData.length);
+      console.log("✅ Orders loaded and filtered:", ordersData.length);
       setOrders(ordersData);
     } catch (error) {
       console.error("❌ Error loading orders:", error);
@@ -219,7 +222,39 @@ const Orders = () => {
     }));
   };
 
-  // Enhanced quick filter functions for admin
+  // Helper function to check if a quick filter is currently active
+  const isQuickFilterActive = (filterType, value) => {
+    switch (filterType) {
+      case "pickup-orders":
+        return (
+          filters.stage === "Completed" &&
+          filters.deliveryMethod === "Pickup" &&
+          !filters.pickupStatus &&
+          !filters.pickupDateFrom &&
+          !filters.pickupDateTo
+        );
+      case "pickup-today":
+        return (
+          filters.stage === "Completed" &&
+          filters.deliveryMethod === "Pickup" &&
+          filters.pickupStatus === "today"
+        );
+      case "pickup-overdue":
+        return (
+          filters.stage === "Completed" &&
+          filters.deliveryMethod === "Pickup" &&
+          filters.pickupStatus === "overdue"
+        );
+      case "stage":
+        return filters.stage === value && !filters.deliveryMethod;
+      case "bakerEmail":
+        return filters.bakerEmail === value;
+      default:
+        return filters[filterType] === value;
+    }
+  };
+
+  // Enhanced quick filter functions that update dropdown filters too
   const applyQuickFilter = (filterType, value) => {
     switch (filterType) {
       case "pickup-orders":
@@ -228,6 +263,14 @@ const Orders = () => {
           stage: "Completed",
           deliveryMethod: "Pickup",
           pickupStatus: "",
+          pickupDateFrom: "",
+          pickupDateTo: "",
+          // Clear conflicting filters
+          paymentMethod: "",
+          bakerId: "",
+          bakerEmail: "",
+          dateFrom: "",
+          dateTo: "",
         }));
         break;
       case "pickup-today":
@@ -236,6 +279,14 @@ const Orders = () => {
           stage: "Completed",
           deliveryMethod: "Pickup",
           pickupStatus: "today",
+          pickupDateFrom: "",
+          pickupDateTo: "",
+          // Clear conflicting filters but keep other pickup-related ones
+          paymentMethod: "",
+          bakerId: "",
+          bakerEmail: "",
+          dateFrom: "",
+          dateTo: "",
         }));
         break;
       case "pickup-overdue":
@@ -244,48 +295,123 @@ const Orders = () => {
           stage: "Completed",
           deliveryMethod: "Pickup",
           pickupStatus: "overdue",
+          pickupDateFrom: "",
+          pickupDateTo: "",
+          // Clear conflicting filters but keep other pickup-related ones
+          paymentMethod: "",
+          bakerId: "",
+          bakerEmail: "",
+          dateFrom: "",
+          dateTo: "",
+        }));
+        break;
+      case "stage":
+        // When applying stage quick filter, clear pickup-specific filters
+        setFilters((prev) => ({
+          ...prev,
+          stage: value,
+          // Clear pickup-specific filters when changing stage
+          deliveryMethod: "",
+          pickupStatus: "",
+          pickupDateFrom: "",
+          pickupDateTo: "",
+          // Keep other filters
+        }));
+        break;
+      case "bakerEmail":
+        // When applying baker filter, clear pickup-specific filters
+        setFilters((prev) => ({
+          ...prev,
+          bakerEmail: value,
+          // Clear pickup-specific filters
+          pickupStatus: "",
+          pickupDateFrom: "",
+          pickupDateTo: "",
+          // Keep other filters but clear conflicting ones
+          bakerId: "",
         }));
         break;
       default:
+        // For other quick filters, update the specific filter and clear pickup-specific ones
         setFilters((prev) => ({
           ...prev,
           [filterType]: value,
           pickupStatus: "",
+          pickupDateFrom: "",
+          pickupDateTo: "",
         }));
         break;
     }
   };
 
-  // Add client-side filtering function for pickup status
-  const filterOrdersByPickupStatus = (orders, pickupStatus) => {
-    if (!pickupStatus) return orders;
+  // FIXED: Enhanced client-side filtering function for pickup criteria
+  const filterOrdersByPickupCriteria = (orders, criteria) => {
+    let filteredOrders = orders;
 
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    // Filter by pickup status (today, overdue, etc.)
+    if (criteria.pickupStatus) {
+      filteredOrders = filteredOrders.filter((order) => {
+        if (order.deliveryMethod !== "Pickup" || !order.pickupSchedule) {
+          return false;
+        }
 
-    return orders.filter((order) => {
-      if (order.deliveryMethod !== "Pickup" || !order.pickupSchedule) {
-        return false;
-      }
+        if (!order.pickupSchedule.date || !order.pickupSchedule.time) {
+          return false;
+        }
 
-      if (!order.pickupSchedule.date || !order.pickupSchedule.time) {
-        return false;
-      }
+        const now = new Date();
+        const today = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate()
+        );
+        const pickupDate = new Date(order.pickupSchedule.date);
+        const pickupDateTime = new Date(
+          `${order.pickupSchedule.date}T${order.pickupSchedule.time}`
+        );
 
-      const pickupDate = new Date(order.pickupSchedule.date);
-      const pickupDateTime = new Date(
-        `${order.pickupSchedule.date}T${order.pickupSchedule.time}`
-      );
+        switch (criteria.pickupStatus) {
+          case "today":
+            return pickupDate.getTime() === today.getTime();
+          case "overdue":
+            return pickupDateTime < now;
+          case "tomorrow":
+            const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+            return pickupDate.getTime() === tomorrow.getTime();
+          case "upcoming":
+            return pickupDateTime > now;
+          default:
+            return true;
+        }
+      });
+    }
 
-      switch (pickupStatus) {
-        case "today":
-          return pickupDate.getTime() === today.getTime();
-        case "overdue":
-          return pickupDateTime < now;
-        default:
-          return true;
-      }
-    });
+    // NEW: Filter by pickup date range
+    if (criteria.pickupDateFrom || criteria.pickupDateTo) {
+      filteredOrders = filteredOrders.filter((order) => {
+        if (order.deliveryMethod !== "Pickup" || !order.pickupSchedule?.date) {
+          return false;
+        }
+
+        const pickupDate = new Date(order.pickupSchedule.date);
+
+        if (criteria.pickupDateFrom) {
+          const fromDate = new Date(criteria.pickupDateFrom);
+          if (pickupDate < fromDate) return false;
+        }
+
+        if (criteria.pickupDateTo) {
+          const toDate = new Date(criteria.pickupDateTo);
+          // Set to end of day for "to" date
+          toDate.setHours(23, 59, 59, 999);
+          if (pickupDate > toDate) return false;
+        }
+
+        return true;
+      });
+    }
+
+    return filteredOrders;
   };
 
   const clearAllFilters = () => {
@@ -298,6 +424,8 @@ const Orders = () => {
       deliveryMethod: "",
       paymentMethod: "",
       pickupStatus: "",
+      pickupDateFrom: "", // NEW: Clear pickup date filters
+      pickupDateTo: "", // NEW: Clear pickup date filters
     });
   };
 
@@ -449,7 +577,7 @@ const Orders = () => {
               <button
                 onClick={() => applyQuickFilter("stage", "Completed")}
                 className={`px-3 py-1 text-xs rounded-full border transition-colors ${
-                  filters.stage === "Completed" && !filters.deliveryMethod
+                  isQuickFilterActive("stage", "Completed")
                     ? "bg-green-100 border-green-300 text-green-700"
                     : "bg-gray-100 border-gray-300 text-gray-600 hover:bg-gray-200"
                 }`}
@@ -460,7 +588,7 @@ const Orders = () => {
               <button
                 onClick={() => applyQuickFilter("stage", "Submitted")}
                 className={`px-3 py-1 text-xs rounded-full border transition-colors ${
-                  filters.stage === "Submitted"
+                  isQuickFilterActive("stage", "Submitted")
                     ? "bg-blue-100 border-blue-300 text-blue-700"
                     : "bg-gray-100 border-gray-300 text-gray-600 hover:bg-gray-200"
                 }`}
@@ -471,7 +599,7 @@ const Orders = () => {
               <button
                 onClick={() => applyQuickFilter("stage", "Requires Approval")}
                 className={`px-3 py-1 text-xs rounded-full border transition-colors ${
-                  filters.stage === "Requires Approval"
+                  isQuickFilterActive("stage", "Requires Approval")
                     ? "bg-purple-100 border-purple-300 text-purple-700"
                     : "bg-gray-100 border-gray-300 text-gray-600 hover:bg-gray-200"
                 }`}
@@ -482,9 +610,7 @@ const Orders = () => {
               <button
                 onClick={() => applyQuickFilter("pickup-orders")}
                 className={`px-3 py-1 text-xs rounded-full border transition-colors ${
-                  filters.stage === "Completed" &&
-                  filters.deliveryMethod === "Pickup" &&
-                  !filters.pickupStatus
+                  isQuickFilterActive("pickup-orders")
                     ? "bg-blue-100 border-blue-300 text-blue-700"
                     : "bg-gray-100 border-gray-300 text-gray-600 hover:bg-gray-200"
                 }`}
@@ -495,9 +621,7 @@ const Orders = () => {
               <button
                 onClick={() => applyQuickFilter("pickup-today")}
                 className={`px-3 py-1 text-xs rounded-full border transition-colors ${
-                  filters.stage === "Completed" &&
-                  filters.deliveryMethod === "Pickup" &&
-                  filters.pickupStatus === "today"
+                  isQuickFilterActive("pickup-today")
                     ? "bg-orange-100 border-orange-300 text-orange-700"
                     : "bg-gray-100 border-gray-300 text-gray-600 hover:bg-gray-200"
                 }`}
@@ -508,9 +632,7 @@ const Orders = () => {
               <button
                 onClick={() => applyQuickFilter("pickup-overdue")}
                 className={`px-3 py-1 text-xs rounded-full border transition-colors ${
-                  filters.stage === "Completed" &&
-                  filters.deliveryMethod === "Pickup" &&
-                  filters.pickupStatus === "overdue"
+                  isQuickFilterActive("pickup-overdue")
                     ? "bg-red-100 border-red-300 text-red-700"
                     : "bg-gray-100 border-gray-300 text-gray-600 hover:bg-gray-200"
                 }`}
@@ -533,7 +655,7 @@ const Orders = () => {
                   key={email}
                   onClick={() => applyQuickFilter("bakerEmail", email)}
                   className={`px-3 py-1 text-xs rounded-full border transition-colors ${
-                    filters.bakerEmail === email
+                    isQuickFilterActive("bakerEmail", email)
                       ? "bg-blue-100 border-blue-300 text-blue-700"
                       : "bg-gray-100 border-gray-300 text-gray-600 hover:bg-gray-200"
                   }`}
@@ -570,6 +692,28 @@ const Orders = () => {
               ))}
             </select>
           </div>
+
+          {/* Pickup Status Filter (Admin only) - Show when pickup delivery method is selected */}
+          {user.role === "admin" && filters.deliveryMethod === "Pickup" && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Pickup Status
+              </label>
+              <select
+                value={filters.pickupStatus}
+                onChange={(e) =>
+                  handleFilterChange("pickupStatus", e.target.value)
+                }
+                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All Pickup Orders</option>
+                <option value="today">Today</option>
+                <option value="overdue">Overdue</option>
+                <option value="tomorrow">Tomorrow</option>
+                <option value="upcoming">Upcoming</option>
+              </select>
+            </div>
+          )}
 
           {/* Baker ID Filter (Admin only) */}
           {user.role === "admin" && (
@@ -681,6 +825,40 @@ const Orders = () => {
               className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500"
             />
           </div>
+
+          {/* NEW: Pickup Date From Filter (Admin only) */}
+          {user.role === "admin" && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Pickup Date From
+              </label>
+              <input
+                type="date"
+                value={filters.pickupDateFrom}
+                onChange={(e) =>
+                  handleFilterChange("pickupDateFrom", e.target.value)
+                }
+                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          )}
+
+          {/* NEW: Pickup Date To Filter (Admin only) */}
+          {user.role === "admin" && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Pickup Date To
+              </label>
+              <input
+                type="date"
+                value={filters.pickupDateTo}
+                onChange={(e) =>
+                  handleFilterChange("pickupDateTo", e.target.value)
+                }
+                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          )}
         </div>
 
         {/* Active Filters Display */}
@@ -744,15 +922,41 @@ const Orders = () => {
                     </button>
                   </span>
                 )}
+                {filters.pickupStatus && (
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                    Pickup: {filters.pickupStatus}
+                    <button
+                      onClick={() => handleFilterChange("pickupStatus", "")}
+                      className="ml-1 text-orange-600 hover:text-orange-800"
+                    >
+                      ×
+                    </button>
+                  </span>
+                )}
                 {(filters.dateFrom || filters.dateTo) && (
                   <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                    Date Range
+                    Due Date Range
                     <button
                       onClick={() => {
                         handleFilterChange("dateFrom", "");
                         handleFilterChange("dateTo", "");
                       }}
                       className="ml-1 text-yellow-600 hover:text-yellow-800"
+                    >
+                      ×
+                    </button>
+                  </span>
+                )}
+                {/* NEW: Pickup Date Range Active Filter */}
+                {(filters.pickupDateFrom || filters.pickupDateTo) && (
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800">
+                    Pickup Date Range
+                    <button
+                      onClick={() => {
+                        handleFilterChange("pickupDateFrom", "");
+                        handleFilterChange("pickupDateTo", "");
+                      }}
+                      className="ml-1 text-teal-600 hover:text-teal-800"
                     >
                       ×
                     </button>
