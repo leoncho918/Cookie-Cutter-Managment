@@ -27,6 +27,10 @@ const AdminSettings = () => {
     confirmText: "",
   });
 
+  useEffect(() => {
+    loadSettings();
+  }, [user]);
+
   // Only admins can access this component
   if (!user || user.role !== "admin") {
     return (
@@ -38,10 +42,6 @@ const AdminSettings = () => {
       </div>
     );
   }
-
-  useEffect(() => {
-    loadSettings();
-  }, []);
 
   const loadSettings = async () => {
     try {

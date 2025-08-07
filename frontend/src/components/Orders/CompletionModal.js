@@ -50,6 +50,19 @@ const CompletionModal = ({
     }
   }, [isOpen, systemSettings]);
 
+  useEffect(() => {
+    // Force country to Australia when international delivery is disabled
+    if (systemSettings && !systemSettings.internationalAddresses?.enabled) {
+      setCompletionData((prev) => ({
+        ...prev,
+        deliveryAddress: {
+          ...prev.deliveryAddress,
+          country: "Australia",
+        },
+      }));
+    }
+  }, [systemSettings, setCompletionData]);
+
   const loadSystemSettings = async () => {
     try {
       setSettingsLoading(true);
@@ -82,6 +95,18 @@ const CompletionModal = ({
         pickupDate: "",
         pickupTime: "",
         pickupNotes: "",
+        // Initialize delivery address with Australia as default if international is disabled
+        deliveryAddress: {
+          street: "",
+          suburb: "",
+          state: "",
+          postcode: "",
+          country:
+            systemSettings && !systemSettings.internationalAddresses?.enabled
+              ? "Australia"
+              : "",
+          instructions: "",
+        },
       }),
       // Clear delivery-specific fields if switching to pickup
       ...(method === "Pickup" && {
@@ -105,6 +130,18 @@ const CompletionModal = ({
   };
 
   const handleDeliveryAddressChange = (field, value) => {
+    // Prevent changing country if international delivery is disabled
+    if (
+      field === "country" &&
+      systemSettings &&
+      !systemSettings.internationalAddresses?.enabled
+    ) {
+      console.log(
+        "🚫 Country change blocked - international delivery is disabled"
+      );
+      return; // Don't allow country changes when international is disabled
+    }
+
     setCompletionData((prev) => ({
       ...prev,
       deliveryAddress: {
@@ -442,8 +479,13 @@ const CompletionModal = ({
                   onChange={(e) =>
                     handleDeliveryAddressChange("country", e.target.value)
                   }
+                  disabled={!isInternationalEnabled} // Disable when international is disabled
                   required
-                  className="w-full border border-green-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+                  className={`w-full border border-green-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500 ${
+                    !isInternationalEnabled
+                      ? "bg-gray-100 cursor-not-allowed text-gray-700"
+                      : "bg-white"
+                  }`}
                 >
                   {availableCountries.map((country) => (
                     <option key={country.code} value={country.name}>
