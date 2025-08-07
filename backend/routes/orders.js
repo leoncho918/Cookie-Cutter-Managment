@@ -41,7 +41,6 @@ router.get("/", requireBakerOrAdmin, async (req, res) => {
       pickupStatus,
       pickupDateFrom,
       pickupDateTo,
-      pendingUpdates, // Add this line
     } = req.query;
 
     if (stage) query.stage = stage;
@@ -55,11 +54,6 @@ router.get("/", requireBakerOrAdmin, async (req, res) => {
       query.dateRequired = {};
       if (dateFrom) query.dateRequired.$gte = new Date(dateFrom);
       if (dateTo) query.dateRequired.$lte = new Date(dateTo);
-    }
-
-    // Add this new section here
-    if (pendingUpdates === "true" && req.user.role === "admin") {
-      query["updateRequest.status"] = "pending";
     }
 
     if (deliveryMethod) query.deliveryMethod = deliveryMethod;

@@ -204,13 +204,7 @@ const Orders = () => {
         params.append("pickupDateFrom", filters.pickupDateFrom);
       if (filters.pickupDateTo)
         params.append("pickupDateTo", filters.pickupDateTo);
-      // In the loadOrders function, modify the params building section
-      // Handle special "pending_updates" filter for admins
-      if (filters.stage === "pending_updates") {
-        params.append("pendingUpdates", "true");
-      } else if (filters.stage) {
-        params.append("stage", filters.stage);
-      }
+      if (filters.stage) params.append("stage", filters.stage);
 
       const response = await axios.get(
         `/orders${params.toString() ? `?${params.toString()}` : ""}`

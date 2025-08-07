@@ -18,12 +18,6 @@ const Sidebar = ({ isOpen, onClose }) => {
       adminOnly: true,
     },
     {
-      name: "Update Requests", // Add this new menu item
-      href: "/admin/update-requests",
-      icon: "📝",
-      adminOnly: true,
-    },
-    {
       name: "System Settings", // NEW: Settings menu item
       href: "/admin/settings",
       icon: "⚙️",
