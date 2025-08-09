@@ -550,30 +550,38 @@ router.post("/:id/items", async (req, res) => {
 
     const { type, measurement, additionalComments } = req.body;
 
-    if (!type || !["Cutter", "Stamp", "Stamp & Cutter"].includes(type)) {
+    if (!["Cutter", "Stamp", "Stamp & Cutter", "STL"].includes(type)) {
       return res.status(400).json({ message: "Valid item type is required" });
     }
 
     // Validate measurement
-    if (!measurement || !measurement.value || measurement.value <= 0) {
-      return res.status(400).json({ message: "Valid measurement is required" });
-    }
+    if (type !== "STL") {
+      if (!measurement || !measurement.value || measurement.value <= 0) {
+        return res
+          .status(400)
+          .json({ message: "Valid measurement is required" });
+      }
 
-    if (!measurement.unit || !["cm", "mm"].includes(measurement.unit)) {
-      return res
-        .status(400)
-        .json({ message: "Valid measurement unit is required" });
+      if (!measurement.unit || !["cm", "mm"].includes(measurement.unit)) {
+        return res
+          .status(400)
+          .json({ message: "Valid measurement unit is required" });
+      }
     }
 
     const newItem = {
       type,
-      measurement: {
-        value: measurement.value,
-        unit: measurement.unit,
-      },
+      measurement:
+        type !== "STL"
+          ? {
+              value: measurement.value,
+              unit: measurement.unit,
+            }
+          : undefined,
       additionalComments: additionalComments || "",
       inspirationImages: [],
       previewImages: [],
+      stlFiles: [], // Add STL files array
     };
 
     order.items.push(newItem);

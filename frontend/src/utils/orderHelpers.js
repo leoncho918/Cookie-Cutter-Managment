@@ -14,6 +14,7 @@ export const ITEM_TYPES = {
   CUTTER: "Cutter",
   STAMP: "Stamp",
   STAMP_AND_CUTTER: "Stamp & Cutter",
+  STL: "STL",
 };
 
 export const MEASUREMENT_UNITS = {

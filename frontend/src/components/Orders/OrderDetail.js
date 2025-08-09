@@ -29,6 +29,69 @@ import CompletionModal from "./CompletionModal";
 import UpdateRequestModal from "./UpdateRequestModal"; // Add this line
 import { validatePostcode } from "../../utils/countryHelpers";
 
+// Add this component before the main OrderDetail component
+const STLFileGallery = ({ stlFiles, onDelete, canDelete }) => {
+  if (!stlFiles || stlFiles.length === 0) {
+    return (
+      <p className="text-sm text-gray-500 italic">No STL files uploaded yet</p>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-1 gap-3">
+      {stlFiles.map((stlFile, index) => (
+        <div
+          key={stlFile.key || index}
+          className="border border-gray-200 rounded-lg p-3 bg-gray-50"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                <svg
+                  className="w-6 h-6 text-blue-600"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                  />
+                </svg>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-900">
+                  {stlFile.originalName || `STL File ${index + 1}`}
+                </p>
+                <p className="text-xs text-gray-500">
+                  Uploaded {formatDate(stlFile.uploadedAt)}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              href={stlFile.url}
+              download={stlFile.originalName}
+              className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+              ><a>Download</a>
+              {canDelete && (
+                <button
+                  onClick={() => onDelete(stlFile.key)}
+                  className="text-red-600 hover:text-red-800 text-sm font-medium"
+                >
+                  Delete
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 const OrderDetail = () => {
   const { id } = useParams();
   const { user } = useAuth();
@@ -101,6 +164,8 @@ const OrderDetail = () => {
   });
   // Add this new state variable
   const [dismissedUpdateRequest, setDismissedUpdateRequest] = useState(false);
+
+  const [uploadingSTL, setUploadingSTL] = useState({});
 
   useEffect(() => {
     if (id) {
@@ -583,21 +648,29 @@ const OrderDetail = () => {
   const handleAddItem = async () => {
     const { type, measurement, additionalComments } = addItemModal;
 
-    // Validate measurement
-    const measurementValidation = validateMeasurement(measurement);
-    if (!measurementValidation.valid) {
-      showError(measurementValidation.message);
-      return;
+    // Only validate measurement for non-STL items
+    if (type !== "STL") {
+      const measurementValidation = validateMeasurement(measurement);
+      if (!measurementValidation.valid) {
+        showError(measurementValidation.message);
+        return;
+      }
     }
 
     try {
       setActionLoading(true);
 
-      await axios.post(`/orders/${id}/items`, {
+      const itemData = {
         type,
-        measurement,
         additionalComments,
-      });
+      };
+
+      // Only include measurement for non-STL items
+      if (type !== "STL") {
+        itemData.measurement = measurement;
+      }
+
+      await axios.post(`/orders/${id}/items`, itemData);
 
       showSuccess("Item added successfully");
       loadOrder();
@@ -744,6 +817,124 @@ const OrderDetail = () => {
         ...prev,
         [`${itemId}-${imageType}`]: false,
       }));
+    }
+  };
+
+  // Add this new function forr STL file uploads
+  const handleSTLUpload = async (files, itemId) => {
+    if (!files || files.length === 0) return;
+
+    const fileArray = Array.from(files);
+    console.log("🔍 STL upload started:", {
+      fileCount: fileArray.length,
+      itemId,
+      orderId: id,
+    });
+
+    try {
+      setUploadingSTL((prev) => ({
+        ...prev,
+        [itemId]: true,
+      }));
+
+      let successCount = 0;
+      let failedFiles = [];
+
+      if (fileArray.length > 1) {
+        showInfo(`Uploading ${fileArray.length} STL file(s)...`);
+      }
+
+      for (let i = 0; i < fileArray.length; i++) {
+        const file = fileArray[i];
+
+        // Validate STL file
+        if (!file.name.toLowerCase().endsWith(".stl")) {
+          failedFiles.push(`${file.name} (not an STL file)`);
+          continue;
+        }
+
+        console.log(
+          `📤 Uploading STL ${i + 1}/${fileArray.length}: ${file.name}`
+        );
+
+        try {
+          const formData = new FormData();
+          formData.append("stlFile", file);
+
+          const response = await axios.post(
+            `/upload/stl/${id}/${itemId}`,
+            formData,
+            {
+              headers: { "Content-Type": "multipart/form-data" },
+              timeout: 60000, // Longer timeout for STL files
+            }
+          );
+
+          console.log(
+            `✅ STL upload response for ${file.name}:`,
+            response.data
+          );
+          successCount++;
+
+          if (fileArray.length > 1) {
+            showInfo(`Uploaded ${successCount}/${fileArray.length} STL files`);
+          }
+        } catch (fileError) {
+          console.error(`❌ Failed to upload STL ${file.name}:`, fileError);
+          failedFiles.push(file.name);
+        }
+
+        if (i < fileArray.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
+      }
+
+      // Final success/error messages
+      if (successCount > 0) {
+        const message =
+          successCount === fileArray.length
+            ? fileArray.length === 1
+              ? "STL file uploaded successfully!"
+              : `All ${fileArray.length} STL files uploaded successfully!`
+            : `${successCount}/${fileArray.length} STL files uploaded successfully`;
+
+        showSuccess(message);
+        loadOrder(); // Reload to show new files
+      }
+
+      if (failedFiles.length > 0) {
+        showError(`Failed to upload: ${failedFiles.join(", ")}`);
+      }
+    } catch (error) {
+      console.error("❌ STL upload error:", error);
+      showError("Failed to upload STL files");
+    } finally {
+      setUploadingSTL((prev) => ({
+        ...prev,
+        [itemId]: false,
+      }));
+    }
+  };
+
+  // Add this new function after handleSTLUpload
+  const handleDeleteSTL = async (itemId, stlKey) => {
+    if (!window.confirm("Are you sure you want to delete this STL file?")) {
+      return;
+    }
+
+    try {
+      await axios.post("/upload/delete", {
+        orderId: id,
+        itemId: itemId,
+        imageKey: stlKey, // Reuse existing delete endpoint
+        imageType: "stl", // New type for STL files
+      });
+
+      showSuccess("STL file deleted successfully");
+      loadOrder();
+    } catch (error) {
+      console.error("Error deleting STL file:", error);
+      showError(error.response?.data?.message || "Failed to delete STL file");
     }
   };
 
@@ -1747,13 +1938,24 @@ const OrderDetail = () => {
                     <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <h5 className="text-sm font-medium text-gray-700 mb-1">
-                          Measurement:
+                          {item.type === "STL" ? "Type:" : "Measurement:"}
                         </h5>
-                        <p className="text-sm text-gray-900">
-                          {item.measurement
-                            ? formatMeasurement(item.measurement)
-                            : "Not specified (legacy item)"}
-                        </p>
+                        {item.type !== "STL" && item.measurement && (
+                          <p className="text-sm text-gray-600">
+                            <span className="font-medium">Size:</span>{" "}
+                            {formatMeasurement(item.measurement)}
+                          </p>
+                        )}
+                        {item.type === "STL" && (
+                          <p className="text-sm text-green-600 font-medium">
+                            📁 STL Type - Upload STL files directly
+                          </p>
+                        )}
+                        {item.type !== "STL" && !item.measurement && (
+                          <p className="text-sm text-gray-500 italic">
+                            Not specified
+                          </p>
+                        )}
                       </div>
 
                       {item.additionalComments && (
@@ -1870,6 +2072,50 @@ const OrderDetail = () => {
                         imageType="inspiration image"
                       />
                     </div>
+
+                    {/* STL Files Section - Only for STL type items */}
+                    {item.type === "STL" && (
+                      <div className="border-t pt-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <h4 className="font-medium text-gray-900">
+                            STL Files
+                          </h4>
+                          {canUploadInspirationImages() && (
+                            <label className="cursor-pointer bg-green-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-green-700 transition-colors disabled:opacity-50">
+                              {uploadingSTL[item._id]
+                                ? "Uploading..."
+                                : "Upload STL"}
+                              <input
+                                type="file"
+                                accept=".stl"
+                                multiple
+                                className="hidden"
+                                disabled={uploadingSTL[item._id]}
+                                onChange={(e) =>
+                                  handleSTLUpload(e.target.files, item._id)
+                                }
+                              />
+                            </label>
+                          )}
+                        </div>
+
+                        {uploadingSTL[item._id] && (
+                          <div className="mb-3 p-2 bg-blue-50 rounded-md">
+                            <p className="text-sm text-blue-700">
+                              Uploading STL files...
+                            </p>
+                          </div>
+                        )}
+
+                        <STLFileGallery
+                          stlFiles={item.stlFiles || []}
+                          onDelete={(stlKey) =>
+                            handleDeleteSTL(item._id, stlKey)
+                          }
+                          canDelete={canDeleteInspirationImages()}
+                        />
+                      </div>
+                    )}
 
                     {/* Preview Images */}
                     <div>
@@ -2165,66 +2411,82 @@ const OrderDetail = () => {
             </select>
           </div>
 
-          {/* Measurement Fields */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Size *
-              </label>
-              <input
-                type="number"
-                value={addItemModal.measurement.value}
-                onChange={(e) =>
-                  setAddItemModal((prev) => ({
-                    ...prev,
-                    measurement: {
-                      ...prev.measurement,
-                      value: parseFloat(e.target.value) || "",
-                    },
-                  }))
-                }
-                placeholder="Enter size"
-                min="0.1"
-                max="1000"
-                step="0.1"
-                required
-                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
+          {/* Only show measurement fields for non-STL items */}
+          {addItemModal.type !== "STL" && (
+            <>
+              {/* Measurement Fields */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Size *
+                  </label>
+                  <input
+                    type="number"
+                    value={addItemModal.measurement.value}
+                    onChange={(e) =>
+                      setAddItemModal((prev) => ({
+                        ...prev,
+                        measurement: {
+                          ...prev.measurement,
+                          value: parseFloat(e.target.value) || "",
+                        },
+                      }))
+                    }
+                    placeholder="Enter size"
+                    min="0.1"
+                    max="1000"
+                    step="0.1"
+                    required
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Unit *
-              </label>
-              <select
-                value={addItemModal.measurement.unit}
-                onChange={(e) =>
-                  setAddItemModal((prev) => ({
-                    ...prev,
-                    measurement: {
-                      ...prev.measurement,
-                      unit: e.target.value,
-                    },
-                  }))
-                }
-                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                {Object.values(MEASUREMENT_UNITS).map((unit) => (
-                  <option key={unit} value={unit}>
-                    {unit}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Unit *
+                  </label>
+                  <select
+                    value={addItemModal.measurement.unit}
+                    onChange={(e) =>
+                      setAddItemModal((prev) => ({
+                        ...prev,
+                        measurement: {
+                          ...prev.measurement,
+                          unit: e.target.value,
+                        },
+                      }))
+                    }
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {Object.values(MEASUREMENT_UNITS).map((unit) => (
+                      <option key={unit} value={unit}>
+                        {unit}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
 
-          {/* Measurement Preview */}
-          {addItemModal.measurement.value && (
-            <div className="p-3 bg-blue-50 rounded-md">
-              <p className="text-sm text-blue-700">
-                <strong>📏 Size Preview:</strong>{" "}
-                {addItemModal.measurement.value}
-                {addItemModal.measurement.unit}
+              {/* Measurement Preview */}
+              {addItemModal.measurement.value && (
+                <div className="p-3 bg-blue-50 rounded-md">
+                  <p className="text-sm text-blue-700">
+                    <strong>📏 Size Preview:</strong>{" "}
+                    {addItemModal.measurement.value}
+                    {addItemModal.measurement.unit}
+                  </p>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Show STL-specific message */}
+          {addItemModal.type === "STL" && (
+            <div className="p-3 bg-green-50 rounded-md">
+              <p className="text-sm text-green-700">
+                <strong>📁 STL Type Selected:</strong> You'll be able to upload
+                STL files instead of providing measurements and inspiration
+                photos. No size measurement is required.
               </p>
             </div>
           )}
@@ -2253,8 +2515,10 @@ const OrderDetail = () => {
 
           <div className="bg-blue-50 p-4 rounded-md">
             <p className="text-sm text-blue-700">
-              <strong>📸 Note:</strong> After adding the item, you'll be able to
-              upload inspiration images to help us understand your vision.
+              <strong>{addItemModal.type === "STL" ? "📁" : "📸"} Note:</strong>{" "}
+              {addItemModal.type === "STL"
+                ? "After adding this STL item, you'll be able to upload STL files directly. No inspiration images or measurements are needed."
+                : "After adding the item, you'll be able to upload inspiration images to help us understand your vision."}
             </p>
           </div>
 
@@ -2279,7 +2543,10 @@ const OrderDetail = () => {
               variant="primary"
               onClick={handleAddItem}
               loading={actionLoading}
-              disabled={actionLoading || !addItemModal.measurement.value}
+              disabled={
+                actionLoading ||
+                (addItemModal.type !== "STL" && !addItemModal.measurement.value)
+              }
             >
               Add Item
             </Button>

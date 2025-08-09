@@ -17,17 +17,21 @@ const s3 = new AWS.S3({
   region: process.env.AWS_REGION,
 });
 
-// Configure multer for memory storage
+// Update multer configuration to accept STL files
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB limit
+    fileSize: 50 * 1024 * 1024, // Increase to 50MB for STL files
   },
   fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith("image/")) {
+    if (
+      file.mimetype.startsWith("image/") ||
+      file.mimetype === "application/octet-stream" || // STL files
+      file.originalname.toLowerCase().endsWith(".stl")
+    ) {
       cb(null, true);
     } else {
-      cb(new Error("Only image files are allowed"));
+      cb(new Error("Only image and STL files are allowed"));
     }
   },
 });
@@ -376,6 +380,138 @@ router.post(
       console.error("❌ Error uploading preview image:", error);
       res.status(500).json({
         message: "Failed to upload image",
+        error:
+          process.env.NODE_ENV === "development" ? error.message : undefined,
+      });
+    }
+  }
+);
+
+// Enhanced upload STL file - supports baker upload in Draft and Requested Changes stages
+// Add new STL upload endpoint
+router.post(
+  "/stl/:orderId/:itemId",
+  requireBakerOrAdmin,
+  upload.single("stlFile"),
+  async (req, res) => {
+    try {
+      const { orderId, itemId } = req.params;
+
+      if (!req.file) {
+        return res.status(400).json({ message: "No STL file provided" });
+      }
+
+      console.log("📤 Uploading STL file:", {
+        orderId,
+        itemId,
+        fileName: req.file.originalname,
+        fileSize: req.file.size,
+        mimeType: req.file.mimetype,
+        userRole: req.user.role,
+        userId: req.user._id,
+      });
+
+      // Find the order
+      const order = await Order.findById(orderId);
+      if (!order) {
+        return res.status(404).json({ message: "Order not found" });
+      }
+
+      // Check permissions (same as inspiration images)
+      const canUpload =
+        req.user.role === "admin" ||
+        canBakerManageInspirationImages(order, req.user);
+
+      if (!canUpload) {
+        if (req.user.role === "baker") {
+          if (order.bakerId !== req.user.bakerId) {
+            return res
+              .status(403)
+              .json({ message: "Access denied to this order" });
+          }
+          return res.status(403).json({
+            message:
+              "Can only upload STL files in Draft or Requested Changes stages",
+            currentStage: order.stage,
+            allowedStages: ["Draft", "Requested Changes"],
+          });
+        }
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      // Find the item
+      const item = order.items.id(itemId);
+      if (!item) {
+        return res.status(404).json({ message: "Item not found" });
+      }
+
+      // Verify item is STL type
+      if (item.type !== "STL") {
+        return res.status(400).json({
+          message: "STL files can only be uploaded to STL type items",
+        });
+      }
+
+      // Generate unique key for S3
+      const fileExtension = req.file.originalname
+        .split(".")
+        .pop()
+        .toLowerCase();
+      const stlKey = `stl/${orderId}/${itemId}/${uuidv4()}.${fileExtension}`;
+
+      // Upload to S3
+      console.log("☁️ Uploading STL to S3...");
+      const stlUrl = await uploadToS3(
+        req.file.buffer,
+        stlKey,
+        "application/octet-stream"
+      );
+
+      // Add STL file to order item
+      const stlData = {
+        url: stlUrl,
+        key: stlKey,
+        uploadedAt: new Date(),
+        originalName: req.file.originalname,
+      };
+
+      item.stlFiles.push(stlData);
+      await order.save();
+
+      console.log("✅ STL file uploaded successfully:", {
+        stlUrl,
+        stlKey,
+        orderId,
+        itemId,
+        fileSize: req.file.size,
+        orderStage: order.stage,
+        uploadedBy: req.user.email,
+      });
+
+      // Emit real-time update
+      const io = req.app.get("io");
+      if (io) {
+        emitImageUpdate(
+          // Reuse image update for STL files
+          io,
+          orderId,
+          itemId,
+          stlData,
+          "stl_uploaded",
+          "stl",
+          req.user._id,
+          req.user.email
+        );
+      }
+
+      res.json({
+        message: "STL file uploaded successfully",
+        stlFile: stlData,
+      });
+    } catch (error) {
+      console.error("❌ Error uploading STL file:", error);
+      res.status(500).json({
+        message: "Failed to upload STL file",
         error:
           process.env.NODE_ENV === "development" ? error.message : undefined,
       });

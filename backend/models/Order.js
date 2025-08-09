@@ -4,23 +4,35 @@ const mongoose = require("mongoose");
 const itemSchema = new mongoose.Schema({
   type: {
     type: String,
-    enum: ["Cutter", "Stamp", "Stamp & Cutter"],
+    enum: ["Cutter", "Stamp", "Stamp & Cutter", "STL"], // Add STL here
     required: true,
   },
   measurement: {
     value: {
       type: Number,
-      required: true,
+      required: function () {
+        return this.type !== "STL";
+      }, // Not required for STL
       min: 0.1,
       max: 1000, // Maximum 1000cm/mm
     },
     unit: {
       type: String,
       enum: ["cm", "mm"],
-      required: true,
+      required: function () {
+        return this.type !== "STL";
+      }, // Not required for STL
       default: "cm",
     },
   },
+  stlFiles: [
+    {
+      url: String,
+      key: String, // S3 key for deletion
+      uploadedAt: { type: Date, default: Date.now },
+      originalName: String, // Store original filename
+    },
+  ],
   inspirationImages: [
     {
       url: String,
