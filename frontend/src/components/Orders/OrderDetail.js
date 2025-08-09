@@ -72,10 +72,14 @@ const STLFileGallery = ({ stlFiles, onDelete, canDelete }) => {
             </div>
 
             <div className="flex items-center space-x-2">
-              href={stlFile.url}
-              download={stlFile.originalName}
-              className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-              ><a>Download</a>
+              <a
+                href={stlFile.url}
+                download={stlFile.originalName}
+                className="text-blue-600 hover:text-blue-800 text-sm
+                font-medium"
+              >
+                Download
+              </a>
               {canDelete && (
                 <button
                   onClick={() => onDelete(stlFile.key)}
