@@ -998,24 +998,6 @@ const OrderDetail = () => {
           </div>
         )}
 
-        {order.updateRequest &&
-          order.updateRequest.status &&
-          order.updateRequest.requestedBy &&
-          order.updateRequest.requestedAt &&
-          order.stage === "Completed" &&
-          order.updateRequest.status === "rejected" && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded">
-              <div className="text-red-800 text-sm">
-                <div className="font-medium">Update request rejected</div>
-                {order.updateRequest.adminResponse && (
-                  <div className="mt-1">
-                    Reason: {order.updateRequest.adminResponse}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
         {/* CRITICAL FIX: Action Buttons Section */}
         <div className="flex justify-between items-center">
           <div>
@@ -1032,7 +1014,7 @@ const OrderDetail = () => {
             )}
           </div>
 
-          <div className="flex space-x-2 mt-4">
+          <div className="flex items-center space-x-2 mt-4">
             {/* Show update request status indicators */}
             {order.updateRequest &&
               order.updateRequest.status &&
@@ -1333,6 +1315,36 @@ const OrderDetail = () => {
       </div>
 
       {renderAdminUpdateRequestSection()}
+
+      {order.updateRequest &&
+        order.updateRequest.status &&
+        order.updateRequest.requestedBy &&
+        order.updateRequest.requestedAt &&
+        order.stage === "Completed" &&
+        order.updateRequest.status === "rejected" && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <div className="flex items-start">
+              <span className="text-red-600 text-lg mr-3">❌</span>
+              <div>
+                <h3 className="text-lg font-medium text-red-800 mb-2">
+                  Update Request Rejected
+                </h3>
+                <div className="text-red-700 text-sm">
+                  <div className="font-medium mb-1">
+                    Your request to update collection and payment details was
+                    rejected.
+                  </div>
+                  {order.updateRequest.adminResponse && (
+                    <div>
+                      <span className="font-medium">Reason:</span>{" "}
+                      {order.updateRequest.adminResponse}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
       {/* Baker Edit Notice */}
       {canBakerEdit() && (
