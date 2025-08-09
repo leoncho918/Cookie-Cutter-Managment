@@ -83,7 +83,7 @@ mongoose
 // Initialize default system settings
 const initializeDefaultSettings = async () => {
   try {
-    const Settings = require("./models/Settings");
+    const Settings = require("./models/Setting");
     const settings = await Settings.getSettings();
     console.log("✅ System settings initialized:", {
       internationalEnabled: settings.internationalAddresses.enabled,
@@ -350,7 +350,7 @@ app.get("/api/test-socket", authenticateToken, (req, res) => {
 app.get("/api/status", authenticateToken, async (req, res) => {
   try {
     // Get current settings status
-    const Settings = require("./models/Settings");
+    const Settings = require("./models/Setting");
     const settings = await Settings.getSettings();
 
     res.json({
