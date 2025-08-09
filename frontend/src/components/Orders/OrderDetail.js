@@ -1026,13 +1026,13 @@ const OrderDetail = () => {
         <div className="flex justify-between items-center">
           <div>
             {order.detailsConfirmed ? (
-              <div className="text-green-600 text-sm flex items-center">
+              <div className="text-green-600 text-sm flex items-center mt-4">
                 <span className="text-green-500 mr-2">✅</span>
                 Details confirmed on{" "}
                 {new Date(order.detailsConfirmedAt).toLocaleDateString("en-AU")}
               </div>
             ) : (
-              <div className="text-gray-600 text-sm">
+              <div className="text-gray-600 text-sm mt-4">
                 Details need to be confirmed once finalized
               </div>
             )}
@@ -1074,7 +1074,7 @@ const OrderDetail = () => {
                   order.updateRequest.requestedAt &&
                   order.updateRequest.status === "pending"
                 }
-                className="text-xs"
+                className="text-xs mt-4"
               >
                 {order.updateRequest &&
                 order.updateRequest.status &&
