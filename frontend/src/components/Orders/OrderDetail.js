@@ -94,12 +94,6 @@ const OrderDetail = () => {
   const [updateRequestModal, setUpdateRequestModal] = useState({
     isOpen: false,
     reason: "",
-    requestedChanges: {
-      deliveryMethod: "",
-      paymentMethod: "",
-      pickupSchedule: null,
-      deliveryAddress: null,
-    },
   });
   // NEW: Confirmation modal state
   const [confirmationModal, setConfirmationModal] = useState({
@@ -1166,12 +1160,6 @@ const OrderDetail = () => {
     setUpdateRequestModal({
       isOpen: true,
       reason: "",
-      requestedChanges: {
-        deliveryMethod: order.deliveryMethod || "",
-        paymentMethod: order.paymentMethod || "",
-        pickupSchedule: order.pickupSchedule || null,
-        deliveryAddress: order.deliveryAddress || null,
-      },
     });
   };
 
@@ -1185,7 +1173,6 @@ const OrderDetail = () => {
       }
 
       await axios.post(`/orders/${id}/request-completion-update`, {
-        requestedChanges: updateRequestModal.requestedChanges,
         reason: updateRequestModal.reason,
       });
 
@@ -1194,12 +1181,6 @@ const OrderDetail = () => {
       setUpdateRequestModal({
         isOpen: false,
         reason: "",
-        requestedChanges: {
-          deliveryMethod: "",
-          paymentMethod: "",
-          pickupSchedule: null,
-          deliveryAddress: null,
-        },
       });
     } catch (error) {
       console.error("Error sending update request:", error);
@@ -2079,12 +2060,6 @@ const OrderDetail = () => {
           setUpdateRequestModal({
             isOpen: false,
             reason: "",
-            requestedChanges: {
-              deliveryMethod: "",
-              paymentMethod: "",
-              pickupSchedule: null,
-              deliveryAddress: null,
-            },
           })
         }
         onSubmit={handleUpdateRequest}

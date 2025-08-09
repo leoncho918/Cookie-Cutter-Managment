@@ -1,7 +1,6 @@
 import React from "react";
 import Modal from "../UI/Modal";
 import Button from "../UI/Button";
-import { DELIVERY_METHODS, PAYMENT_METHODS } from "../../utils/orderHelpers";
 
 const UpdateRequestModal = ({
   isOpen,
