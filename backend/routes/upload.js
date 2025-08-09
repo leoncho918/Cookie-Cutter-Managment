@@ -540,9 +540,10 @@ router.post("/delete", requireBakerOrAdmin, async (req, res) => {
       });
     }
 
-    if (!["inspiration", "preview"].includes(imageType)) {
+    if (!["inspiration", "preview", "stl"].includes(imageType)) {
       return res.status(400).json({
-        message: "Invalid imageType. Must be 'inspiration' or 'preview'",
+        message:
+          "Invalid imageType. Must be 'inspiration', 'preview', or 'stl'",
       });
     }
 
@@ -563,6 +564,8 @@ router.post("/delete", requireBakerOrAdmin, async (req, res) => {
     const canDeleteInspiration =
       isAdmin || canBakerManageInspirationImages(order, req.user);
     const canDeletePreview = isAdmin;
+    const canDeleteSTL =
+      isAdmin || canBakerManageInspirationImages(order, req.user);
 
     if (imageType === "preview" && !canDeletePreview) {
       return res.status(403).json({
@@ -589,20 +592,54 @@ router.post("/delete", requireBakerOrAdmin, async (req, res) => {
       });
     }
 
-    // Find and remove the image
-    const imageArray =
-      imageType === "inspiration" ? item.inspirationImages : item.previewImages;
-    const imageIndex = imageArray.findIndex((img) => img.key === imageKey);
-
-    if (imageIndex === -1) {
-      return res.status(404).json({ message: "Image not found" });
+    if (imageType === "stl" && !canDeleteSTL) {
+      if (req.user.role === "baker") {
+        if (order.bakerId !== req.user.bakerId) {
+          return res.status(403).json({
+            message: "Access denied to this order",
+          });
+        }
+        return res.status(403).json({
+          message:
+            "Can only delete STL files in Draft or Requested Changes stages",
+          currentStage: order.stage,
+          allowedStages: ["Draft", "Requested Changes"],
+        });
+      }
+      return res.status(403).json({
+        message: "Access denied",
+      });
     }
 
-    const imageToDelete = imageArray[imageIndex];
-    console.log("🔍 Found image to delete:", {
-      url: imageToDelete.url,
-      key: imageToDelete.key,
-      uploadedAt: imageToDelete.uploadedAt,
+    // Find and remove the image
+    // Find and remove the file/image
+    let fileArray;
+    if (imageType === "inspiration") {
+      fileArray = item.inspirationImages;
+    } else if (imageType === "preview") {
+      fileArray = item.previewImages;
+    } else if (imageType === "stl") {
+      fileArray = item.stlFiles;
+    }
+
+    if (!fileArray) {
+      return res.status(404).json({
+        message: `No ${imageType} files found for this item`,
+      });
+    }
+    const fileIndex = fileArray.findIndex((file) => file.key === imageKey);
+
+    if (fileIndex === -1) {
+      return res.status(404).json({ message: `${imageType} file not found` });
+    }
+
+    const fileToDelete = fileArray[fileIndex];
+    console.log("🔍 Found file to delete:", {
+      url: fileToDelete.url,
+      key: fileToDelete.key,
+      uploadedAt: fileToDelete.uploadedAt,
+      originalName: fileToDelete.originalName || "N/A",
+      fileType: imageType,
       orderStage: order.stage,
       deletedBy: req.user.email,
     });
@@ -617,7 +654,7 @@ router.post("/delete", requireBakerOrAdmin, async (req, res) => {
     }
 
     // Remove from database
-    imageArray.splice(imageIndex, 1);
+    fileArray.splice(fileIndex, 1);
     await order.save();
 
     console.log("✅ Image deleted from database");
@@ -625,21 +662,27 @@ router.post("/delete", requireBakerOrAdmin, async (req, res) => {
     // Emit real-time update
     const io = req.app.get("io");
     if (io) {
+      // Use appropriate event type based on file type
+      const eventType = imageType === "stl" ? "stl_deleted" : "image_deleted";
+
       emitImageUpdate(
         io,
         orderId,
         itemId,
-        imageToDelete,
-        "image_deleted",
+        fileToDelete,
+        eventType,
         imageType,
         req.user._id,
         req.user.email
       );
     }
 
+    // Return appropriate success message
+    const fileTypeName =
+      imageType === "stl" ? "STL file" : `${imageType} image`;
     res.json({
-      message: `${imageType} image deleted successfully`,
-      deletedImage: imageToDelete,
+      message: `${fileTypeName} deleted successfully`,
+      deletedFile: fileToDelete,
     });
   } catch (error) {
     console.error("❌ Error deleting image:", error);
