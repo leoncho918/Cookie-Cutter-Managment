@@ -33,7 +33,7 @@ import { validatePostcode } from "../../utils/countryHelpers";
 const STLFileGallery = ({ stlFiles, onDelete, canDelete }) => {
   if (!stlFiles || stlFiles.length === 0) {
     return (
-      <p className="text-sm text-gray-500 italic">No STL files uploaded yet</p>
+      <p className="text-sm text-gray-500 italic">No STL file uploaded yet</p>
     );
   }
 
@@ -1952,7 +1952,7 @@ const OrderDetail = () => {
                         )}
                         {item.type === "STL" && (
                           <p className="text-sm text-green-600 font-medium">
-                            📁 STL Type - Upload STL files directly
+                            📁 STL File - Upload a STL file directly
                           </p>
                         )}
                         {item.type !== "STL" && !item.measurement && (
@@ -2082,7 +2082,7 @@ const OrderDetail = () => {
                       <div className="border-t pt-4">
                         <div className="flex items-center justify-between mb-3">
                           <h4 className="font-medium text-gray-900">
-                            STL Files
+                            STL File
                           </h4>
                           {canUploadInspirationImages() && (
                             <label className="cursor-pointer bg-green-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-green-700 transition-colors disabled:opacity-50">
@@ -2488,9 +2488,9 @@ const OrderDetail = () => {
           {addItemModal.type === "STL" && (
             <div className="p-3 bg-green-50 rounded-md">
               <p className="text-sm text-green-700">
-                <strong>📁 STL Type Selected:</strong> You'll be able to upload
-                STL files instead of providing measurements and inspiration
-                photos. No size measurement is required.
+                <strong>📁 STL File Selected:</strong> You'll be able to upload
+                a STL file instead of providing measurements and an inspiration
+                photo photos. No size measurement is required.
               </p>
             </div>
           )}
