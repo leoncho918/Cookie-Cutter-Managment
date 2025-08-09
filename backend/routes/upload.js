@@ -441,6 +441,19 @@ router.post(
 
       // Find the item
       const item = order.items.id(itemId);
+
+      // NEW RESTRICTION: Check if STL file already exists
+      if (item.stlFiles && item.stlFiles.length > 0) {
+        return res.status(400).json({
+          message:
+            "Only one STL file can be uploaded per item. Please delete the existing STL file first if you want to upload a new one.",
+          existingFile: {
+            originalName: item.stlFiles[0].originalName,
+            uploadedAt: item.stlFiles[0].uploadedAt,
+          },
+        });
+      }
+
       if (!item) {
         return res.status(404).json({ message: "Item not found" });
       }
@@ -475,7 +488,7 @@ router.post(
         originalName: req.file.originalname,
       };
 
-      item.stlFiles.push(stlData);
+      item.stlFiles = [stlData];
       await order.save();
 
       console.log("✅ STL file uploaded successfully:", {

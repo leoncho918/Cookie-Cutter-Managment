@@ -33,7 +33,27 @@ import { validatePostcode } from "../../utils/countryHelpers";
 const STLFileGallery = ({ stlFiles, onDelete, canDelete }) => {
   if (!stlFiles || stlFiles.length === 0) {
     return (
-      <p className="text-sm text-gray-500 italic">No STL file uploaded yet</p>
+      <div className="border border-dashed border-gray-300 rounded-lg p-6 text-center">
+        <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center mx-auto mb-3">
+          <svg
+            className="w-6 h-6 text-gray-400"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+            />
+          </svg>
+        </div>
+        <p className="text-sm text-gray-500">No STL file uploaded yet</p>
+        <p className="text-xs text-gray-400 mt-1">
+          Upload one STL file for this item
+        </p>
+      </div>
     );
   }
 
@@ -829,6 +849,24 @@ const OrderDetail = () => {
     if (!files || files.length === 0) return;
 
     const fileArray = Array.from(files);
+
+    // NEW RESTRICTION: Check if STL file already exists
+    const item = order.items.find((item) => item._id === itemId);
+    if (item && item.stlFiles && item.stlFiles.length > 0) {
+      showError(
+        "Only one STL file can be uploaded per item. Please delete the existing STL file first if you want to upload a new one."
+      );
+      return;
+    }
+
+    // NEW RESTRICTION: Only allow one file to be uploaded
+    if (fileArray.length > 1) {
+      showError(
+        "Only one STL file can be uploaded per item. Please select a single file."
+      );
+      return;
+    }
+
     console.log("🔍 STL upload started:", {
       fileCount: fileArray.length,
       itemId,
@@ -911,7 +949,16 @@ const OrderDetail = () => {
       }
     } catch (error) {
       console.error("❌ STL upload error:", error);
-      showError("Failed to upload STL files");
+
+      // Handle specific error for existing STL file
+      if (
+        error.response?.status === 400 &&
+        error.response?.data?.message?.includes("Only one STL file")
+      ) {
+        showError(error.response.data.message);
+      } else {
+        showError("Failed to upload STL file");
+      }
     } finally {
       setUploadingSTL((prev) => ({
         ...prev,
@@ -2081,26 +2128,38 @@ const OrderDetail = () => {
                     {item.type === "STL" && (
                       <div className="border-t pt-4">
                         <div className="flex items-center justify-between mb-3">
-                          <h4 className="font-medium text-gray-900">
-                            STL File
-                          </h4>
-                          {canUploadInspirationImages() && (
-                            <label className="cursor-pointer bg-green-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-green-700 transition-colors disabled:opacity-50">
-                              {uploadingSTL[item._id]
-                                ? "Uploading..."
-                                : "Upload STL"}
-                              <input
-                                type="file"
-                                accept=".stl"
-                                multiple
-                                className="hidden"
-                                disabled={uploadingSTL[item._id]}
-                                onChange={(e) =>
-                                  handleSTLUpload(e.target.files, item._id)
-                                }
-                              />
-                            </label>
-                          )}
+                          <div>
+                            <h4 className="font-medium text-gray-900">
+                              STL File
+                            </h4>
+                            <p className="text-xs text-gray-500 mt-1">
+                              Only one STL file per item is allowed
+                            </p>
+                          </div>
+                          {canUploadInspirationImages() &&
+                            // Only show upload button if no STL file exists
+                            (!item.stlFiles || item.stlFiles.length === 0 ? (
+                              <label className="cursor-pointer bg-green-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-green-700 transition-colors disabled:opacity-50">
+                                {uploadingSTL[item._id]
+                                  ? "Uploading..."
+                                  : "Upload STL"}
+                                <input
+                                  type="file"
+                                  accept=".stl"
+                                  // REMOVED: multiple attribute to enforce single file selection
+                                  className="hidden"
+                                  disabled={uploadingSTL[item._id]}
+                                  onChange={(e) =>
+                                    handleSTLUpload(e.target.files, item._id)
+                                  }
+                                />
+                              </label>
+                            ) : (
+                              <div className="text-sm text-gray-600 bg-gray-50 px-3 py-2 rounded-md">
+                                To upload a new STL file, delete the existing
+                                one first
+                              </div>
+                            ))}
                         </div>
 
                         {uploadingSTL[item._id] && (
