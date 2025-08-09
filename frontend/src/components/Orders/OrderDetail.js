@@ -1032,7 +1032,7 @@ const OrderDetail = () => {
             )}
           </div>
 
-          <div className="flex space-x-2">
+          <div className="flex space-x-2 mt-4">
             {/* Show update request status indicators */}
             {order.updateRequest &&
               order.updateRequest.status &&
@@ -1068,7 +1068,7 @@ const OrderDetail = () => {
                   order.updateRequest.requestedAt &&
                   order.updateRequest.status === "pending"
                 }
-                className="text-xs mt-4"
+                className="text-xs"
               >
                 {order.updateRequest &&
                 order.updateRequest.status &&
