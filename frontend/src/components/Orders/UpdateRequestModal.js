@@ -49,78 +49,20 @@ const UpdateRequestModal = ({
         {/* Requested Changes */}
         <div className="space-y-4">
           <h4 className="text-lg font-medium text-gray-900">
-            Requested Changes
+            Reason for Update
           </h4>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Collection Method
-            </label>
-            <select
-              value={updateRequestData.requestedChanges.deliveryMethod}
-              onChange={(e) =>
-                setUpdateRequestData((prev) => ({
-                  ...prev,
-                  requestedChanges: {
-                    ...prev.requestedChanges,
-                    deliveryMethod: e.target.value,
-                  },
-                }))
-              }
-              className="w-full border border-gray-300 rounded-lg px-3 py-2"
-            >
-              <option value="">Select collection method</option>
-              {Object.values(DELIVERY_METHODS).map((method) => (
-                <option key={method} value={method}>
-                  {method}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Payment Method
-            </label>
-            <select
-              value={updateRequestData.requestedChanges.paymentMethod}
-              onChange={(e) =>
-                setUpdateRequestData((prev) => ({
-                  ...prev,
-                  requestedChanges: {
-                    ...prev.requestedChanges,
-                    paymentMethod: e.target.value,
-                  },
-                }))
-              }
-              className="w-full border border-gray-300 rounded-lg px-3 py-2"
-            >
-              <option value="">Select payment method</option>
-              {Object.values(PAYMENT_METHODS).map((method) => (
-                <option key={method} value={method}>
-                  {method}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Reason for Update *
-            </label>
-            <textarea
-              value={updateRequestData.reason}
-              onChange={(e) =>
-                setUpdateRequestData((prev) => ({
-                  ...prev,
-                  reason: e.target.value,
-                }))
-              }
-              placeholder="Please explain why you need to update these details..."
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 min-h-[100px]"
-              required
-            />
-          </div>
+          <textarea
+            value={updateRequestData.reason}
+            onChange={(e) =>
+              setUpdateRequestData((prev) => ({
+                ...prev,
+                reason: e.target.value,
+              }))
+            }
+            placeholder="Please explain why you need to update these details..."
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 min-h-[100px]"
+            required
+          />
         </div>
 
         {/* Submit Buttons */}

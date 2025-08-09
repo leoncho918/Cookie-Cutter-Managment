@@ -1097,7 +1097,7 @@ const OrderDetail = () => {
                 onClick={handleOpenCompletionModal}
                 className="bg-green-600 hover:bg-green-700"
               >
-                Update Details (Approved)
+                Update Details
               </Button>
             ) : order.stage === "Completed" &&
               (!order.deliveryMethod || !order.paymentMethod) ? (
