@@ -78,6 +78,11 @@ EOF
 cat > .env << 'EOF'
 # Server Configuration
 PORT=5000
+
+# Frontend Configuration
+FRONTEND_PORT=3000
+FRONTEND_DEV_PORT=3001
+FRONTEND_URL=http://localhost:3000
 NODE_ENV=development
 
 # Database Configuration
@@ -265,6 +270,7 @@ EOF
 # Create frontend .env
 cat > .env << 'EOF'
 REACT_APP_API_URL=http://localhost:5000/api
+REACT_APP_BACKEND_PORT=5000
 REACT_APP_ENV=development
 EOF
 

@@ -13,8 +13,16 @@ export const useAuth = () => {
 };
 
 // Configure axios defaults
-const API_BASE_URL =
-  process.env.REACT_APP_API_URL || "http://localhost:5000/api";
+const getApiBaseUrl = () => {
+  if (process.env.REACT_APP_API_URL) {
+    return process.env.REACT_APP_API_URL;
+  }
+
+  const backendPort = process.env.REACT_APP_BACKEND_PORT || 5000;
+  return `http://localhost:${backendPort}/api`;
+};
+
+const API_BASE_URL = getApiBaseUrl();
 axios.defaults.baseURL = API_BASE_URL;
 
 export const AuthProvider = ({ children }) => {

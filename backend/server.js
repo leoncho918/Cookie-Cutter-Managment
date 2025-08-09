@@ -27,13 +27,29 @@ const app = express();
 const server = http.createServer(app);
 
 // Configure Socket.IO with proper CORS
+// Get port configuration from environment variables
+const FRONTEND_PORT = process.env.FRONTEND_PORT || 3000;
+const FRONTEND_DEV_PORT = process.env.FRONTEND_DEV_PORT || 3001;
+
+// Build CORS origins array from environment variables
+const getCorsOrigins = () => {
+  const origins = [
+    `http://localhost:${FRONTEND_PORT}`,
+    `http://localhost:${FRONTEND_DEV_PORT}`,
+  ];
+
+  if (process.env.FRONTEND_URL) {
+    origins.push(process.env.FRONTEND_URL);
+  }
+
+  return origins;
+};
+
+const corsOrigins = getCorsOrigins();
+
 const io = socketIo(server, {
   cors: {
-    origin: [
-      "http://localhost:3000",
-      "http://localhost:3001",
-      process.env.FRONTEND_URL || "http://localhost:3000",
-    ],
+    origin: corsOrigins,
     methods: ["GET", "POST"],
     credentials: true,
   },
@@ -48,11 +64,7 @@ const PORT = process.env.PORT || 5000;
 // Middleware
 app.use(
   cors({
-    origin: [
-      "http://localhost:3000",
-      "http://localhost:3001",
-      process.env.FRONTEND_URL || "http://localhost:3000",
-    ],
+    origin: corsOrigins,
     credentials: true,
   })
 );
@@ -462,8 +474,11 @@ server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`🔌 Socket.IO enabled for real-time updates`);
   console.log(
-    `📡 Frontend URL: ${process.env.FRONTEND_URL || "http://localhost:3000"}`
+    `📡 Frontend URL: ${
+      process.env.FRONTEND_URL || `http://localhost:${FRONTEND_PORT}`
+    }`
   );
+  console.log(`🔗 CORS Origins:`, corsOrigins);
   console.log(`🌐 Environment: ${process.env.NODE_ENV || "development"}`);
   console.log(`📍 Pickup Location: 40A Brancourt Ave, Bankstown NSW 2200`);
   console.log("🍪 ================================================");

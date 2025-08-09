@@ -32,9 +32,16 @@ export const SocketProvider = ({ children }) => {
       console.log("🔌 Initializing socket connection for:", user.email);
 
       // Determine the server URL
-      const serverUrl = process.env.REACT_APP_API_URL
-        ? process.env.REACT_APP_API_URL.replace("/api", "")
-        : "http://localhost:5000";
+      const getSocketServerUrl = () => {
+        if (process.env.REACT_APP_API_URL) {
+          return process.env.REACT_APP_API_URL.replace("/api", "");
+        }
+
+        const backendPort = process.env.REACT_APP_BACKEND_PORT || 5000;
+        return `http://localhost:${backendPort}`;
+      };
+
+      const serverUrl = getSocketServerUrl();
 
       console.log("🌐 Connecting to socket server:", serverUrl);
 
