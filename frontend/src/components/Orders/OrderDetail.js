@@ -99,6 +99,8 @@ const OrderDetail = () => {
   const [confirmationModal, setConfirmationModal] = useState({
     isOpen: false,
   });
+  // Add this new state variable
+  const [dismissedUpdateRequest, setDismissedUpdateRequest] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -296,6 +298,22 @@ const OrderDetail = () => {
     showSuccess,
     navigate,
   ]);
+
+  // Reset dismissed state when order changes or update request status changes
+  useEffect(() => {
+    if (
+      order &&
+      order.updateRequest &&
+      order.updateRequest.status === "rejected"
+    ) {
+      const storedDismissal = localStorage.getItem(
+        `dismissed_update_request_${id}`
+      );
+      if (storedDismissal === order.updateRequest.requestedAt) {
+        setDismissedUpdateRequest(true);
+      }
+    }
+  }, [order, id]);
 
   // Enhanced load order function with retry logic
   const loadOrderWithRetry = async (retryCount = 0) => {
@@ -1321,27 +1339,56 @@ const OrderDetail = () => {
         order.updateRequest.requestedBy &&
         order.updateRequest.requestedAt &&
         order.stage === "Completed" &&
-        order.updateRequest.status === "rejected" && (
+        order.updateRequest.status === "rejected" &&
+        !dismissedUpdateRequest && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-            <div className="flex items-start">
-              <span className="text-red-600 text-lg mr-3">❌</span>
-              <div>
-                <h3 className="text-lg font-medium text-red-800 mb-2">
-                  Update Request Rejected
-                </h3>
-                <div className="text-red-700 text-sm">
-                  <div className="font-medium mb-1">
-                    Your request to update collection and payment details was
-                    rejected.
-                  </div>
-                  {order.updateRequest.adminResponse && (
-                    <div>
-                      <span className="font-medium">Reason:</span>{" "}
-                      {order.updateRequest.adminResponse}
+            <div className="flex items-start justify-between">
+              <div className="flex items-start">
+                <span className="text-red-600 text-lg mr-3">❌</span>
+                <div>
+                  <h3 className="text-lg font-medium text-red-800 mb-2">
+                    Update Request Rejected
+                  </h3>
+                  <div className="text-red-700 text-sm">
+                    <div className="font-medium mb-1">
+                      Your request to update collection and payment details was
+                      rejected.
                     </div>
-                  )}
+                    {order.updateRequest.adminResponse && (
+                      <div>
+                        <span className="font-medium">Reason:</span>{" "}
+                        {order.updateRequest.adminResponse}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
+              <button
+                onClick={() => {
+                  setDismissedUpdateRequest(true);
+                  // Optionally persist the dismissal to localStorage
+                  localStorage.setItem(
+                    `dismissed_update_request_${id}`,
+                    order.updateRequest.requestedAt
+                  );
+                }}
+                className="text-red-500 hover:text-red-700 p-1 rounded-full hover:bg-red-100 transition-colors duration-200"
+                title="Dismiss notification"
+              >
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
             </div>
           </div>
         )}
